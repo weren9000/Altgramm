@@ -386,9 +386,7 @@
         } @else {
           <div class="message-list" #messageList (scroll)="onMessageListScroll()">
             @if (isTextChannelSelected()) {
-              @if (messagesLoading()) {
-                <div class="message-list__status">Загружаем историю сообщений...</div>
-              } @else {
+              @if (!messagesLoading()) {
                 @if (messagesHasMore()) {
                   <div class="message-list__status">
                     {{ messagesLoadingMore() ? 'Подгружаем старые сообщения...' : 'Прокрутите вверх, чтобы подгрузить старые сообщения' }}
@@ -443,6 +441,13 @@
             } @else {
               <div class="message-list__status">Выберите текстовый канал, чтобы открыть переписку.</div>
             }
+          </div>
+        }
+
+        @if (workspaceOverlayVisible()) {
+          <div class="workspace-overlay">
+            <div class="workspace-overlay__loader"></div>
+            <span>{{ workspaceOverlayLabel() }}</span>
           </div>
         }
 

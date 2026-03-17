@@ -672,6 +672,39 @@ select {
 
 .workspace-body {
   min-height: 0;
+  position: relative;
+}
+
+.workspace-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  background: rgba(12, 18, 26, 0.86);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+.workspace-overlay span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.workspace-overlay__loader {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--accent-cool);
+  border-right-color: var(--accent);
+  border-radius: 999px;
+  animation: workspace-spin 0.85s linear infinite;
 }
 
 .voice-stage {
@@ -1168,6 +1201,12 @@ select {
   100% {
     opacity: 0;
     transform: scale(1.24);
+  }
+}
+
+@keyframes workspace-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

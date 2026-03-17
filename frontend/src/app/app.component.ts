@@ -212,6 +212,20 @@ export class AppComponent {
     () => this.hasVoiceConnection() && this.activeChannel()?.id === this.connectedVoiceChannel()?.id
   );
   readonly showVoiceDock = computed(() => this.hasVoiceConnection() && !this.isInActiveVoiceChannel());
+  readonly workspaceOverlayVisible = computed(
+    () => this.workspaceLoading() || (this.isTextChannelSelected() && this.messagesLoading())
+  );
+  readonly workspaceOverlayLabel = computed(() => {
+    if (this.workspaceLoading()) {
+      return 'Загружаем рабочую область';
+    }
+
+    if (this.isTextChannelSelected() && this.messagesLoading()) {
+      return 'Загружаем сообщения';
+    }
+
+    return '';
+  });
   readonly canSendMessage = computed(() => {
     if (!this.isTextChannelSelected() || this.messageSubmitting()) {
       return false;
