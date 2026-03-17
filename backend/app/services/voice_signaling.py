@@ -129,6 +129,19 @@ class VoiceSignalingManager:
             exclude_participant_id=participant_id,
         )
 
+    async def snapshot_rooms(self, channel_ids: set[str] | None = None) -> dict[str, list[dict[str, Any]]]:
+        async with self._lock:
+            snapshot: dict[str, list[dict[str, Any]]] = {}
+            for channel_id, room in self._rooms.items():
+                if channel_ids is not None and channel_id not in channel_ids:
+                    continue
+
+                participants = [connection.participant.to_payload() for connection in room.values()]
+                if participants:
+                    snapshot[channel_id] = participants
+
+            return snapshot
+
     async def _get_connection(self, channel_id: str, participant_id: str) -> VoiceConnection | None:
         async with self._lock:
             room = self._rooms.get(channel_id)

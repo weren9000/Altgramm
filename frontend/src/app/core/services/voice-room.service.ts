@@ -96,6 +96,7 @@ type IncomingVoiceMessage =
 const SETTINGS_STORAGE_KEY = 'tescord.voice.settings';
 const VOICE_ACTIVITY_INTERVAL_MS = 120;
 const VOICE_ACTIVITY_HOLD_MS = 320;
+const VOICE_SOCKET_PING_INTERVAL_MS = 20000;
 const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   inputDeviceId: null,
   outputDeviceId: null,
@@ -147,9 +148,12 @@ export class VoiceRoomService {
   private audioContext: AudioContext | null = null;
   private localMonitor: VoiceActivityMonitor | null = null;
   private socket: WebSocket | null = null;
+  private socketPingIntervalId: number | null = null;
   private localStream: MediaStream | null = null;
   private selfId: string | null = null;
   private lastJoinContext: VoiceJoinContext | null = null;
+  private pendingPlaybackUnlock = new Set<string>();
+  private userGestureUnlockHandler: (() => void) | null = null;
   private readonly peerConnections = new Map<string, RTCPeerConnection>();
   private readonly pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
   private readonly remoteMonitors = new Map<string, VoiceActivityMonitor>();
@@ -209,6 +213,7 @@ export class VoiceRoomService {
     try {
       this.localStream = await this.openLocalStream();
       this.localMuted.set(false);
+      await this.ensureAudioContext().catch(() => null);
       await this.refreshDevices();
       await this.openSocket(channelId, token);
     } catch (error) {
@@ -224,6 +229,8 @@ export class VoiceRoomService {
     this.clearAudioElements();
     this.pendingIceCandidates.clear();
     this.participantUserIds.clear();
+    this.pendingPlaybackUnlock.clear();
+    this.detachUserGestureUnlock();
     this.selfId = null;
     this.state.set('idle');
     this.error.set(null);
@@ -359,6 +366,10 @@ export class VoiceRoomService {
       throw new Error('Браузер не поддерживает доступ к микрофону');
     }
 
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      throw new Error('На телефоне микрофон и голосовой канал работают только через HTTPS или localhost. Откройте Tescord по защищенному домену.');
+    }
+
     const settings = this.settings();
     const withSelectedDevice: MediaTrackConstraints = {
       echoCancellation: true,
@@ -396,14 +407,26 @@ export class VoiceRoomService {
       const socket = new WebSocket(`${WS_BASE_URL}/api/voice/channels/${channelId}/ws?token=${encodeURIComponent(token)}`);
       this.socket = socket;
 
-      socket.onopen = () => resolve();
+      let opened = false;
+
+      socket.onopen = () => {
+        opened = true;
+        this.startSocketKeepAlive();
+        resolve();
+      };
       socket.onerror = () => reject(new Error('Не удалось установить signaling-соединение'));
       socket.onclose = () => {
         if (this.socket !== socket) {
           return;
         }
 
-        this.handleFailure('Голосовое соединение закрыто');
+        this.stopSocketKeepAlive();
+        if (!opened) {
+          reject(new Error('????????? signaling-?????????? ????????? ?? ?????????? ???????????'));
+          return;
+        }
+
+        this.handleFailure('????????? ?????????? ???????');
       };
       socket.onmessage = (event) => {
         this.handleSocketMessage(event.data);
@@ -439,28 +462,36 @@ export class VoiceRoomService {
 
     if (message.type === 'offer') {
       void this.handleIncomingOffer(message.from_id, message.payload as RTCSessionDescriptionInit).catch((error) => {
-        this.handleFailure(error instanceof Error ? error.message : 'Не удалось принять offer');
+        this.handlePeerConnectionFailure(
+          message.from_id,
+          error instanceof Error ? error.message : '?? ??????? ??????? ????????? ??????????? ?????????'
+        );
       });
       return;
     }
 
     if (message.type === 'answer') {
       void this.handleIncomingAnswer(message.from_id, message.payload as RTCSessionDescriptionInit).catch((error) => {
-        this.handleFailure(error instanceof Error ? error.message : 'Не удалось принять answer');
+        this.handlePeerConnectionFailure(
+          message.from_id,
+          error instanceof Error ? error.message : '?? ??????? ????????? ????????? ??????????? ?????????'
+        );
       });
       return;
     }
 
     if (message.type === 'ice_candidate') {
       void this.handleIncomingIceCandidate(message.from_id, message.payload as RTCIceCandidateInit).catch((error) => {
-        this.handleFailure(error instanceof Error ? error.message : 'Не удалось обработать ICE candidate');
+        this.handlePeerConnectionFailure(
+          message.from_id,
+          error instanceof Error ? error.message : '?? ??????? ?????????? ??????? ??????? ?????????'
+        );
       });
       return;
     }
 
     if (message.type === 'error') {
-      this.error.set(message.detail);
-      this.state.set('error');
+      this.settingsNotice.set(message.detail);
     }
   }
 
@@ -475,7 +506,14 @@ export class VoiceRoomService {
     await this.startLocalVoiceActivityMonitor().catch(() => undefined);
 
     for (const participant of message.participants) {
-      await this.createOfferForParticipant(participant.id);
+      try {
+        await this.createOfferForParticipant(participant.id);
+      } catch (error) {
+        this.handlePeerConnectionFailure(
+          participant.id,
+          error instanceof Error ? error.message : '?? ??????? ?????????? ????????? ????? ? ????? ?? ??????????'
+        );
+      }
     }
   }
 
@@ -609,7 +647,21 @@ export class VoiceRoomService {
     audioElement.srcObject = stream;
     void this.applyOutputDevice(audioElement).catch(() => undefined);
     this.applyVolumeToAudioElement(participantId);
-    void audioElement.play().catch(() => undefined);
+    void this.playRemoteAudio(participantId, audioElement);
+  }
+
+  private async playRemoteAudio(participantId: string, audioElement: HTMLAudioElement): Promise<void> {
+    try {
+      await audioElement.play();
+      this.pendingPlaybackUnlock.delete(participantId);
+      if (!this.pendingPlaybackUnlock.size) {
+        this.detachUserGestureUnlock();
+      }
+    } catch {
+      this.pendingPlaybackUnlock.add(participantId);
+      this.attachUserGestureUnlock();
+      this.settingsNotice.set('На телефоне коснитесь экрана еще раз, если браузер не начал воспроизводить голос автоматически.');
+    }
   }
 
   private async applyOutputDevice(audioElement: HTMLAudioElement): Promise<void> {
@@ -737,6 +789,10 @@ export class VoiceRoomService {
 
     this.pendingIceCandidates.delete(participantId);
     this.participantUserIds.delete(participantId);
+    this.pendingPlaybackUnlock.delete(participantId);
+    if (!this.pendingPlaybackUnlock.size) {
+      this.detachUserGestureUnlock();
+    }
   }
 
   private teardownPeerConnections(): void {
@@ -747,9 +803,11 @@ export class VoiceRoomService {
 
   private teardownSocket(): void {
     if (!this.socket) {
+      this.stopSocketKeepAlive();
       return;
     }
 
+    this.stopSocketKeepAlive();
     this.socket.onclose = null;
     this.socket.onerror = null;
     this.socket.onmessage = null;
@@ -776,6 +834,16 @@ export class VoiceRoomService {
     this.remoteAudioElements.clear();
   }
 
+  private handlePeerConnectionFailure(participantId: string, message: string): void {
+    this.settingsNotice.set(message);
+    this.removeParticipant(participantId);
+    this.destroyPeer(participantId);
+    this.error.set(null);
+    if (this.activeChannelId()) {
+      this.state.set('connected');
+    }
+  }
+
   private handleFailure(message: string): void {
     this.stopVoiceActivityMonitoring();
     this.teardownSocket();
@@ -784,6 +852,8 @@ export class VoiceRoomService {
     this.clearAudioElements();
     this.pendingIceCandidates.clear();
     this.participantUserIds.clear();
+    this.pendingPlaybackUnlock.clear();
+    this.detachUserGestureUnlock();
     this.selfId = null;
     this.state.set('error');
     this.error.set(message);
@@ -894,11 +964,77 @@ export class VoiceRoomService {
     return audioContext;
   }
 
+  private startSocketKeepAlive(): void {
+    this.stopSocketKeepAlive();
+
+    this.socketPingIntervalId = window.setInterval(() => {
+      this.sendSignal({
+        type: 'ping'
+      });
+    }, VOICE_SOCKET_PING_INTERVAL_MS);
+  }
+
+  private stopSocketKeepAlive(): void {
+    if (this.socketPingIntervalId === null) {
+      return;
+    }
+
+    window.clearInterval(this.socketPingIntervalId);
+    this.socketPingIntervalId = null;
+  }
+
   private createAudioContext(): AudioContext | null {
     const AudioContextCtor = window.AudioContext
       ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
     return AudioContextCtor ? new AudioContextCtor() : null;
+  }
+
+  private attachUserGestureUnlock(): void {
+    if (typeof window === 'undefined' || this.userGestureUnlockHandler) {
+      return;
+    }
+
+    this.userGestureUnlockHandler = () => {
+      void this.retryPendingAudioPlayback();
+    };
+
+    window.addEventListener('touchstart', this.userGestureUnlockHandler, { passive: true });
+    window.addEventListener('click', this.userGestureUnlockHandler);
+  }
+
+  private detachUserGestureUnlock(): void {
+    if (typeof window === 'undefined' || !this.userGestureUnlockHandler) {
+      return;
+    }
+
+    window.removeEventListener('touchstart', this.userGestureUnlockHandler);
+    window.removeEventListener('click', this.userGestureUnlockHandler);
+    this.userGestureUnlockHandler = null;
+  }
+
+  private async retryPendingAudioPlayback(): Promise<void> {
+    await this.ensureAudioContext().catch(() => null);
+
+    for (const participantId of [...this.pendingPlaybackUnlock]) {
+      const audioElement = this.remoteAudioElements.get(participantId);
+      if (!audioElement) {
+        this.pendingPlaybackUnlock.delete(participantId);
+        continue;
+      }
+
+      try {
+        await audioElement.play();
+        this.pendingPlaybackUnlock.delete(participantId);
+      } catch {
+        return;
+      }
+    }
+
+    if (!this.pendingPlaybackUnlock.size) {
+      this.settingsNotice.set(null);
+      this.detachUserGestureUnlock();
+    }
   }
 
   private stopVoiceActivityMonitoring(): void {

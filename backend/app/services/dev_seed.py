@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import or_, select
 
 from app.core.config import get_settings
 from app.core.security import hash_password, verify_password
-from app.db.models import Channel, ChannelType, MemberRole, Server, ServerMember, User
+from app.db.models import Channel, ChannelType, MemberRole, Message, MessageType, Server, ServerMember, User
 from app.db.session import SessionLocal
 
 
@@ -124,5 +125,35 @@ def ensure_development_seed_data() -> None:
                 channel.topic = topic
                 channel.position = position
                 channel.type = channel_type
+
+        db.flush()
+
+        seeded_channels = {
+            channel.name: channel
+            for channel in db.execute(select(Channel).where(Channel.server_id == server.id)).scalars().all()
+        }
+        announcements_channel = seeded_channels.get("объявления")
+        if announcements_channel is not None:
+            has_messages = db.execute(
+                select(Message.id).where(Message.channel_id == announcements_channel.id).limit(1)
+            ).scalar_one_or_none()
+
+            if has_messages is None:
+                start_at = datetime.now(UTC) - timedelta(hours=6)
+                for index in range(1, 41):
+                    created_at = start_at + timedelta(minutes=index * 7)
+                    db.add(
+                        Message(
+                            channel_id=announcements_channel.id,
+                            author_id=user.id,
+                            content=(
+                                f"Запись {index}. Tescord уже умеет авторизацию, группы, каналы и голос. "
+                                "Следующий шаг для MVP — настоящий текстовый чат с вложениями и ленивой загрузкой истории."
+                            ),
+                            type=MessageType.TEXT,
+                            created_at=created_at,
+                            updated_at=created_at,
+                        )
+                    )
 
         db.commit()

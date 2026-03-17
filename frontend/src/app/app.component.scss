@@ -33,6 +33,7 @@
 
 button,
 input,
+textarea,
 select {
   font: inherit;
 }
@@ -566,7 +567,7 @@ select {
 
 .voice-roster__member {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   color: #dde6ee;
 }
@@ -575,6 +576,20 @@ select {
   width: 10px;
   height: 10px;
   background: var(--voice-open);
+  margin-top: 4px;
+}
+
+.voice-roster__meta {
+  min-width: 0;
+}
+
+.voice-roster__meta small,
+.voice-roster__name {
+  display: block;
+}
+
+.voice-roster__meta small {
+  color: var(--muted);
 }
 
 .voice-roster__member--speaking .voice-roster__dot {
@@ -823,6 +838,17 @@ select {
   overflow: auto;
 }
 
+.message-list__status {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.message-list__status--error {
+  border-color: rgba(255, 107, 107, 0.24);
+  color: #ffb7b7;
+}
+
 .message-card {
   display: flex;
   gap: 14px;
@@ -853,15 +879,80 @@ select {
   margin-bottom: 8px;
 }
 
+.message-attachments,
+.composer__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.attachment-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.attachment-chip strong,
+.attachment-chip small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip small {
+  color: var(--muted);
+}
+
+.attachment-chip--pending {
+  border-color: rgba(255, 159, 67, 0.28);
+  background: rgba(255, 159, 67, 0.08);
+}
+
 .composer {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 16px;
 }
 
 .composer__hint {
   max-width: 60ch;
+}
+
+.composer__field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer__label {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.composer textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
+.composer textarea:focus {
+  outline: none;
+  border-color: rgba(61, 214, 198, 0.4);
 }
 
 .member-rail {
@@ -945,6 +1036,10 @@ select {
 .member-row__right small,
 .member-row__state {
   display: block;
+}
+
+.member-row__activity {
+  color: var(--muted);
 }
 
 .member-row__right {

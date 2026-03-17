@@ -298,7 +298,18 @@
                       [class.voice-roster__member--muted]="voiceParticipantTone(participant) === 'muted'"
                     >
                       <span class="voice-roster__dot"></span>
-                      <span class="voice-roster__name">{{ participant.nick }}</span>
+                      <div class="voice-roster__meta">
+                        <span class="voice-roster__name">{{ participant.nick }}</span>
+                        <small>
+                          {{
+                            voiceParticipantTone(participant) === 'speaking'
+                              ? 'говорит'
+                              : voiceParticipantTone(participant) === 'muted'
+                                ? 'микрофон выключен'
+                                : 'в канале'
+                          }}
+                        </small>
+                      </div>
                     </div>
                   }
                 </div>
@@ -462,7 +473,54 @@
             </p>
           </section>
 
-          <div class="message-list">
+          <div class="message-list" #messageList (scroll)="onMessageListScroll()">
+            @if (isTextChannelSelected()) {
+              @if (messagesLoading()) {
+                <div class="message-list__status">Загружаем историю сообщений...</div>
+              } @else {
+                @if (messagesHasMore()) {
+                  <div class="message-list__status">
+                    {{ messagesLoadingMore() ? 'Подгружаем старые сообщения...' : 'Прокрутите вверх, чтобы подгрузить старые сообщения' }}
+                  </div>
+                }
+
+                @if (messageError()) {
+                  <div class="message-list__status message-list__status--error">{{ messageError() }}</div>
+                }
+
+                @if (!messages().length) {
+                  <div class="message-list__status">В этом канале пока нет сообщений. Начните разговор первым.</div>
+                } @else {
+                  @for (message of messages(); track message.id) {
+                    <article class="message-card">
+                      <div class="message-card__avatar" [style.--avatar-accent]="message.author.id === currentUser()?.id ? '#ff9f43' : '#3dd6c6'">
+                        {{ message.author.nick.slice(0, 2).toUpperCase() }}
+                      </div>
+                      <div class="message-card__body">
+                        <div class="message-card__meta">
+                          <strong>{{ message.author.nick }}</strong>
+                          <span>{{ message.author.full_name }}</span>
+                          <time>{{ formatMessageTime(message.created_at) }}</time>
+                        </div>
+                        @if (message.content) {
+                          <p>{{ message.content }}</p>
+                        }
+                        @if (message.attachments.length) {
+                          <div class="message-attachments">
+                            @for (attachment of message.attachments; track attachment.id) {
+                              <button class="attachment-chip" type="button" (click)="downloadAttachment(attachment)">
+                                <strong>{{ attachment.filename }}</strong>
+                                <small>{{ formatFileSize(attachment.size_bytes) }}</small>
+                              </button>
+                            }
+                          </div>
+                        }
+                      </div>
+                    </article>
+                  }
+                }
+              }
+            } @else {
             <article class="message-card">
               <div class="message-card__avatar" [style.--avatar-accent]="'#ff9f43'">Г</div>
               <div class="message-card__body">
@@ -507,16 +565,49 @@
                 </p>
               </div>
             </article>
+            }
           </div>
         }
 
         <section class="composer">
           <div class="composer__hint">{{ composerHint() }}</div>
-          <div class="composer__actions">
+          @if (isTextChannelSelected()) {
+            @if (pendingFiles().length) {
+              <div class="composer__files">
+                @for (file of pendingFiles(); track file.name + '-' + $index) {
+                  <button class="attachment-chip attachment-chip--pending" type="button" (click)="removePendingFile($index)">
+                    <strong>{{ file.name }}</strong>
+                    <small>{{ formatFileSize(file.size) }} · убрать</small>
+                  </button>
+                }
+              </div>
+            }
+
+            <label class="composer__field">
+              <span class="composer__label">Сообщение</span>
+              <textarea
+                [ngModel]="messageDraft()"
+                (ngModelChange)="onMessageDraftChange($event)"
+                [disabled]="messageSubmitting()"
+                placeholder="Напишите сообщение для этого канала"
+                rows="3"
+              ></textarea>
+            </label>
+
+            <div class="composer__actions composer__actions--chat">
+              <input #attachmentInput hidden type="file" multiple (change)="onAttachmentSelection($event)" />
+              <button class="secondary-button" type="button" [disabled]="messageSubmitting()" (click)="openAttachmentPicker()">Файл</button>
+              <button class="primary-button" type="button" [disabled]="!canSendMessage()" (click)="submitMessage()">
+                {{ messageSubmitting() ? 'Отправляем...' : 'Отправить' }}
+              </button>
+            </div>
+          } @else {
+            <div class="composer__actions">
             <button class="secondary-button" type="button" disabled>Файл</button>
             <button class="secondary-button" type="button" disabled>Упомянуть</button>
             <button class="primary-button" type="button" disabled>Отправить</button>
           </div>
+          }
         </section>
       </section>
     </main>
@@ -577,6 +668,7 @@
                       }
                     </strong>
                     <small>{{ member.fullName }}</small>
+                    <small class="member-row__activity">{{ member.activityLabel }}</small>
                   </div>
                 </div>
 
@@ -795,6 +887,8 @@
       <div class="modal__body">
         <p class="modal-note">{{ member.fullName }} · {{ member.roleLabel }}</p>
         <p class="modal-note">Состояние: {{ member.presenceLabel }}</p>
+
+        <p class="modal-note">Активность: {{ member.activityLabel }}</p>
 
         <label class="range-field">
           <span>Персональная громкость</span>

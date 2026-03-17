@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_user
@@ -16,7 +17,10 @@ from app.schemas.workspace import (
     CreateServerRequest,
     ServerMemberSummary,
     ServerSummary,
+    VoiceChannelPresenceSummary,
+    VoicePresenceParticipantSummary,
 )
+from app.services.voice_signaling import voice_signaling_manager
 
 router = APIRouter(prefix="/servers", tags=["workspace"])
 
@@ -59,6 +63,25 @@ def _build_server_member_summary(member: ServerMember, user: User) -> ServerMemb
     )
 
 
+def _build_voice_channel_presence_summary(
+    channel: Channel, participants: list[dict[str, object]]
+) -> VoiceChannelPresenceSummary:
+    return VoiceChannelPresenceSummary(
+        channel_id=channel.id,
+        channel_name=channel.name,
+        participants=[
+            VoicePresenceParticipantSummary(
+                participant_id=str(participant["id"]),
+                user_id=UUID(str(participant["user_id"])),
+                nick=str(participant["nick"]),
+                full_name=str(participant["full_name"]),
+                muted=bool(participant["muted"]),
+            )
+            for participant in participants
+        ],
+    )
+
+
 def _ensure_unique_slug(db: Session, base_slug: str) -> str:
     slug = base_slug
     counter = 2
@@ -76,12 +99,38 @@ def _get_membership(db: Session, server_id: UUID, user_id: UUID) -> ServerMember
     ).scalar_one_or_none()
 
 
+def _ensure_membership(db: Session, server_id: UUID, current_user: User) -> ServerMember:
+    membership = _get_membership(db, server_id, current_user.id)
+    if membership is not None:
+        return membership
+
+    membership = ServerMember(
+        server_id=server_id,
+        user_id=current_user.id,
+        role=MemberRole.MEMBER,
+        nickname=current_user.username,
+    )
+    db.add(membership)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        membership = _get_membership(db, server_id, current_user.id)
+        if membership is None:
+            raise
+        return membership
+
+    db.refresh(membership)
+    return membership
+
+
 def _get_accessible_server(db: Session, server_id: UUID, current_user: User) -> tuple[Server, ServerMember | None]:
     server = db.get(Server, server_id)
     if server is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Группа не найдена")
 
-    return server, _get_membership(db, server_id, current_user.id)
+    return server, _ensure_membership(db, server_id, current_user)
 
 
 def _ensure_manage_permission(membership: ServerMember | None, current_user: User) -> MemberRole:
@@ -177,6 +226,31 @@ def list_server_members(
     ).all()
 
     return [_build_server_member_summary(member, user) for member, user in rows]
+
+
+@router.get("/{server_id}/voice-presence", response_model=list[VoiceChannelPresenceSummary])
+async def list_server_voice_presence(
+    server_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[VoiceChannelPresenceSummary]:
+    server, _ = _get_accessible_server(db, server_id, current_user)
+    voice_channels = db.execute(
+        select(Channel)
+        .where(Channel.server_id == server.id, Channel.type == ChannelType.VOICE)
+        .order_by(Channel.position, Channel.name)
+    ).scalars().all()
+
+    if not voice_channels:
+        return []
+
+    snapshot = await voice_signaling_manager.snapshot_rooms({str(channel.id) for channel in voice_channels})
+
+    return [
+        _build_voice_channel_presence_summary(channel, snapshot[str(channel.id)])
+        for channel in voice_channels
+        if str(channel.id) in snapshot
+    ]
 
 
 @router.post("/{server_id}/channels", response_model=ChannelSummary, status_code=status.HTTP_201_CREATED)

@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { forkJoin } from 'rxjs';
@@ -13,8 +13,12 @@ import { ApiHealthResponse } from './core/models/system.models';
 import {
   CurrentUserResponse,
   WorkspaceChannel,
+  WorkspaceMessage,
+  WorkspaceMessageAttachment,
   WorkspaceMember,
-  WorkspaceServer
+  WorkspaceServer,
+  WorkspaceVoicePresenceChannel,
+  WorkspaceVoicePresenceParticipant
 } from './core/models/workspace.models';
 import { VoiceParticipant, VoiceRoomService } from './core/services/voice-room.service';
 
@@ -22,6 +26,12 @@ type AuthMode = 'login' | 'register';
 type ChannelKind = 'text' | 'voice';
 type MemberPresenceTone = 'inactive' | 'speaking' | 'open' | 'muted';
 type MobilePanel = 'servers' | 'channels' | 'members' | null;
+
+interface VoicePresenceByUser {
+  channelId: string;
+  channelName: string;
+  participant: WorkspaceVoicePresenceParticipant;
+}
 
 interface LoginFormModel {
   login: string;
@@ -66,6 +76,9 @@ interface GroupMemberItem {
   isSelf: boolean;
   presence: MemberPresenceTone;
   presenceLabel: string;
+  activityLabel: string;
+  activeVoiceChannelId: string | null;
+  activeVoiceChannelName: string | null;
   voiceParticipant: VoiceParticipant | null;
 }
 
@@ -75,6 +88,9 @@ const ADMIN_CREDENTIALS: LoginFormModel = {
 };
 
 const SESSION_STORAGE_KEY = 'tescord.session';
+const MESSAGES_PAGE_SIZE = 25;
+const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
+const VOICE_PRESENCE_POLL_INTERVAL_MS = 3000;
 
 @Component({
   selector: 'app-root',
@@ -89,15 +105,26 @@ export class AppComponent {
   private readonly workspaceApi = inject(WorkspaceApiService);
   private readonly voiceRoom = inject(VoiceRoomService);
   private readonly destroyRef = inject(DestroyRef);
+  private voicePresencePollIntervalId: number | null = null;
+
+  @ViewChild('messageList')
+  private messageListRef?: ElementRef<HTMLElement>;
+
+  @ViewChild('attachmentInput')
+  private attachmentInputRef?: ElementRef<HTMLInputElement>;
 
   readonly health = signal<ApiHealthResponse | null>(null);
   readonly healthError = signal<string | null>(null);
   readonly authError = signal<string | null>(null);
   readonly workspaceError = signal<string | null>(null);
+  readonly messageError = signal<string | null>(null);
   readonly managementError = signal<string | null>(null);
   readonly managementSuccess = signal<string | null>(null);
   readonly authLoading = signal(false);
   readonly workspaceLoading = signal(false);
+  readonly messagesLoading = signal(false);
+  readonly messagesLoadingMore = signal(false);
+  readonly messageSubmitting = signal(false);
   readonly createGroupLoading = signal(false);
   readonly createChannelLoading = signal(false);
   readonly authMode = signal<AuthMode>('login');
@@ -107,6 +134,10 @@ export class AppComponent {
   readonly servers = signal<WorkspaceServer[]>([]);
   readonly channels = signal<WorkspaceChannel[]>([]);
   readonly members = signal<WorkspaceMember[]>([]);
+  readonly voicePresence = signal<WorkspaceVoicePresenceChannel[]>([]);
+  readonly messages = signal<WorkspaceMessage[]>([]);
+  readonly messagesHasMore = signal(false);
+  readonly messagesCursor = signal<string | null>(null);
   readonly selectedServerId = signal<string | null>(null);
   readonly selectedChannelId = signal<string | null>(null);
   readonly settingsPanelOpen = signal(false);
@@ -114,6 +145,8 @@ export class AppComponent {
   readonly createChannelModalOpen = signal(false);
   readonly selectedMemberUserId = signal<string | null>(null);
   readonly mobilePanel = signal<MobilePanel>(null);
+  readonly messageDraft = signal('');
+  readonly pendingFiles = signal<File[]>([]);
 
   readonly loginForm: LoginFormModel = {
     login: '',
@@ -172,11 +205,19 @@ export class AppComponent {
 
   readonly connectedVoiceChannelId = computed(() => this.connectedVoiceChannel()?.id ?? null);
   readonly isVoiceChannelSelected = computed(() => this.activeChannel()?.type === 'voice');
+  readonly isTextChannelSelected = computed(() => this.activeChannel()?.type === 'text');
   readonly hasVoiceConnection = computed(() => this.voiceRoom.isConnected() && this.connectedVoiceChannel() !== null);
   readonly isInActiveVoiceChannel = computed(
     () => this.hasVoiceConnection() && this.activeChannel()?.id === this.connectedVoiceChannel()?.id
   );
   readonly showVoiceDock = computed(() => this.hasVoiceConnection() && !this.isInActiveVoiceChannel());
+  readonly canSendMessage = computed(() => {
+    if (!this.isTextChannelSelected() || this.messageSubmitting()) {
+      return false;
+    }
+
+    return this.messageDraft().trim().length > 0 || this.pendingFiles().length > 0;
+  });
 
   readonly canManageActiveGroup = computed(() => {
     const activeServer = this.activeServer();
@@ -332,14 +373,69 @@ export class AppComponent {
     }))
   );
 
+  readonly serverVoicePresenceByChannelId = computed(() => {
+    const currentUserId = this.currentUser()?.id ?? null;
+    const presenceByChannel = new Map<string, VoiceParticipant[]>();
+
+    for (const channel of this.voicePresence()) {
+      presenceByChannel.set(
+        channel.channel_id,
+        channel.participants.map((participant) => ({
+          id: participant.participant_id,
+          user_id: participant.user_id,
+          nick: participant.nick,
+          full_name: participant.full_name,
+          muted: participant.muted,
+          speaking: false,
+          is_self: currentUserId === participant.user_id,
+        }))
+      );
+    }
+
+    return presenceByChannel;
+  });
+
+  readonly serverVoicePresenceByUserId = computed(() => {
+    const presenceByUser = new Map<string, VoicePresenceByUser>();
+
+    for (const channel of this.voicePresence()) {
+      for (const participant of channel.participants) {
+        presenceByUser.set(participant.user_id, {
+          channelId: channel.channel_id,
+          channelName: channel.channel_name,
+          participant,
+        });
+      }
+    }
+
+    return presenceByUser;
+  });
+
   readonly groupMembers = computed<GroupMemberItem[]>(() => {
     const currentUser = this.currentUser();
-    const voiceParticipantsByUserId = new Map(this.voiceParticipants().map((participant) => [participant.user_id, participant]));
+    const connectedVoiceChannel = this.connectedVoiceChannel();
+    const localVoiceParticipantsByUserId = new Map(
+      this.voiceParticipants().map((participant) => [participant.user_id, participant])
+    );
+    const serverVoicePresenceByUserId = this.serverVoicePresenceByUserId();
 
     return [...this.members()]
       .map((member) => {
-        const voiceParticipant = voiceParticipantsByUserId.get(member.user_id) ?? null;
-        const presence = voiceParticipant ? this.voiceParticipantTone(voiceParticipant) : 'inactive';
+        const voiceParticipant = localVoiceParticipantsByUserId.get(member.user_id) ?? null;
+        const serverVoicePresence = serverVoicePresenceByUserId.get(member.user_id) ?? null;
+        const presence = voiceParticipant
+          ? this.voiceParticipantTone(voiceParticipant)
+          : serverVoicePresence
+            ? serverVoicePresence.participant.muted
+              ? 'muted'
+              : 'open'
+            : 'inactive';
+        const activeVoiceChannelId = voiceParticipant
+          ? connectedVoiceChannel?.id ?? serverVoicePresence?.channelId ?? null
+          : serverVoicePresence?.channelId ?? null;
+        const activeVoiceChannelName = voiceParticipant
+          ? connectedVoiceChannel?.name ?? serverVoicePresence?.channelName ?? null
+          : serverVoicePresence?.channelName ?? null;
 
         return {
           id: member.id,
@@ -353,6 +449,9 @@ export class AppComponent {
           isSelf: currentUser?.id === member.user_id,
           presence,
           presenceLabel: this.formatPresenceLabel(presence),
+          activityLabel: this.formatVoiceActivityLabel(presence, activeVoiceChannelName),
+          activeVoiceChannelId,
+          activeVoiceChannelName,
           voiceParticipant
         };
       })
@@ -433,6 +532,7 @@ export class AppComponent {
   });
 
   constructor() {
+    this.destroyRef.onDestroy(() => this.stopVoicePresencePolling());
     this.loadHealth();
     this.restoreSession();
   }
@@ -643,6 +743,123 @@ export class AppComponent {
       });
   }
 
+  onMessageDraftChange(value: string): void {
+    this.messageDraft.set(value);
+  }
+
+  openAttachmentPicker(): void {
+    this.attachmentInputRef?.nativeElement.click();
+  }
+
+  onAttachmentSelection(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    const selectedFiles = Array.from(input?.files ?? []);
+    if (!selectedFiles.length) {
+      return;
+    }
+
+    const validFiles: File[] = [];
+    let rejectedFile: File | null = null;
+
+    for (const file of selectedFiles) {
+      if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+        rejectedFile = file;
+        continue;
+      }
+
+      validFiles.push(file);
+    }
+
+    if (validFiles.length) {
+      this.pendingFiles.set([...this.pendingFiles(), ...validFiles]);
+      this.messageError.set(null);
+    }
+
+    if (rejectedFile) {
+      this.messageError.set(`Файл ${rejectedFile.name} превышает лимит 50 МБ`);
+    }
+
+    if (input) {
+      input.value = '';
+    }
+  }
+
+  removePendingFile(index: number): void {
+    this.pendingFiles.update((files) => files.filter((_, currentIndex) => currentIndex !== index));
+  }
+
+  onMessageListScroll(): void {
+    const element = this.messageListRef?.nativeElement;
+    if (!element || element.scrollTop > 120) {
+      return;
+    }
+
+    this.loadOlderMessages();
+  }
+
+  submitMessage(): void {
+    const token = this.session()?.access_token;
+    const activeChannel = this.activeChannel();
+    if (!token || !activeChannel || activeChannel.type !== 'text' || !this.canSendMessage()) {
+      return;
+    }
+
+    const payload = {
+      content: this.messageDraft().trim(),
+      files: this.pendingFiles()
+    };
+    const channelId = activeChannel.id;
+
+    this.messageSubmitting.set(true);
+    this.messageError.set(null);
+
+    this.workspaceApi
+      .sendMessage(token, channelId, payload)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (message) => {
+          this.messageSubmitting.set(false);
+          this.messageDraft.set('');
+          this.pendingFiles.set([]);
+
+          if (this.selectedChannelId() !== channelId) {
+            return;
+          }
+
+          this.messages.update((messages) => [...messages, message]);
+          this.scrollMessagesToBottom();
+        },
+        error: (error) => {
+          this.messageSubmitting.set(false);
+          this.messageError.set(this.extractErrorMessage(error, 'Не удалось отправить сообщение'));
+        }
+      });
+  }
+
+  downloadAttachment(attachment: WorkspaceMessageAttachment): void {
+    const token = this.session()?.access_token;
+    if (!token) {
+      return;
+    }
+
+    this.workspaceApi
+      .downloadAttachment(token, attachment.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (blob) => {
+          const objectUrl = URL.createObjectURL(blob);
+          const anchor = document.createElement('a');
+          anchor.href = objectUrl;
+          anchor.download = attachment.filename;
+          anchor.click();
+          window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        },
+        error: (error) => {
+          this.messageError.set(this.extractErrorMessage(error, 'Не удалось скачать файл'));
+        }
+      });
+  }
+
   async joinActiveVoiceChannel(): Promise<void> {
     const activeChannel = this.activeChannel();
     if (!activeChannel || activeChannel.type !== 'voice') {
@@ -703,12 +920,15 @@ export class AppComponent {
   }
 
   logout(): void {
+    this.stopVoicePresencePolling();
     this.voiceRoom.leave();
     this.session.set(null);
     this.currentUser.set(null);
     this.servers.set([]);
     this.channels.set([]);
     this.members.set([]);
+    this.voicePresence.set([]);
+    this.resetTextChannelState();
     this.selectedServerId.set(null);
     this.selectedChannelId.set(null);
     this.settingsPanelOpen.set(false);
@@ -718,6 +938,7 @@ export class AppComponent {
     this.mobilePanel.set(null);
     this.authError.set(null);
     this.workspaceError.set(null);
+    this.messageError.set(null);
     this.managementError.set(null);
     this.managementSuccess.set(null);
     this.authLoading.set(false);
@@ -735,10 +956,12 @@ export class AppComponent {
     }
 
     this.closeMobilePanel();
+    this.stopVoicePresencePolling();
     if (this.hasVoiceConnection()) {
       this.voiceRoom.leave();
     }
 
+    this.resetTextChannelState();
     this.loadServerWorkspace(token, serverId);
   }
 
@@ -746,14 +969,26 @@ export class AppComponent {
     this.closeMobilePanel();
     this.selectedChannelId.set(channel.id);
     this.workspaceError.set(null);
+    this.messageError.set(null);
 
     if (channel.type === 'voice') {
+      this.resetTextChannelState();
       await this.connectToVoiceChannel(channel);
+      return;
+    }
+
+    const token = this.session()?.access_token;
+    if (token) {
+      this.loadMessagesForChannel(token, channel.id);
     }
   }
 
   voiceParticipantsForChannel(channelId: string): VoiceParticipant[] {
-    return this.connectedVoiceChannelId() === channelId ? this.voiceParticipants() : [];
+    if (this.connectedVoiceChannelId() === channelId && this.voiceParticipants().length) {
+      return this.voiceParticipants();
+    }
+
+    return this.serverVoicePresenceByChannelId().get(channelId) ?? [];
   }
 
   voiceParticipantTone(participant: VoiceParticipant): MemberPresenceTone {
@@ -762,6 +997,54 @@ export class AppComponent {
     }
 
     return participant.speaking ? 'speaking' : 'open';
+  }
+
+  private startVoicePresencePolling(): void {
+    this.stopVoicePresencePolling(false);
+    void this.refreshVoicePresence();
+    this.voicePresencePollIntervalId = window.setInterval(() => {
+      void this.refreshVoicePresence();
+    }, VOICE_PRESENCE_POLL_INTERVAL_MS);
+  }
+
+  private stopVoicePresencePolling(clearState = true): void {
+    if (this.voicePresencePollIntervalId !== null) {
+      window.clearInterval(this.voicePresencePollIntervalId);
+      this.voicePresencePollIntervalId = null;
+    }
+
+    if (clearState) {
+      this.voicePresence.set([]);
+    }
+  }
+
+  private async refreshVoicePresence(): Promise<void> {
+    const token = this.session()?.access_token;
+    const serverId = this.selectedServerId();
+    if (!token || !serverId) {
+      this.voicePresence.set([]);
+      return;
+    }
+
+    this.workspaceApi
+      .getVoicePresence(token, serverId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (voicePresence) => {
+          if (this.selectedServerId() !== serverId) {
+            return;
+          }
+
+          this.voicePresence.set(voicePresence);
+        },
+        error: () => {
+          if (this.selectedServerId() !== serverId) {
+            return;
+          }
+
+          this.voicePresence.set([]);
+        }
+      });
   }
 
   private loadHealth(): void {
@@ -832,10 +1115,13 @@ export class AppComponent {
           this.servers.set(servers);
 
           if (!servers.length) {
+            this.stopVoicePresencePolling();
+            this.resetTextChannelState();
             this.selectedServerId.set(null);
             this.selectedChannelId.set(null);
             this.channels.set([]);
             this.members.set([]);
+            this.voicePresence.set([]);
             this.workspaceLoading.set(false);
             return;
           }
@@ -849,6 +1135,7 @@ export class AppComponent {
           this.loadServerWorkspace(token, preferredServerId);
         },
         error: (error) => {
+          this.stopVoicePresencePolling();
           this.workspaceLoading.set(false);
           this.voiceRoom.leave();
           this.session.set(null);
@@ -856,6 +1143,8 @@ export class AppComponent {
           this.servers.set([]);
           this.channels.set([]);
           this.members.set([]);
+          this.voicePresence.set([]);
+          this.resetTextChannelState();
           this.selectedServerId.set(null);
           this.selectedChannelId.set(null);
           this.clearStoredSession();
@@ -868,6 +1157,7 @@ export class AppComponent {
     const previousSelectedChannelId = this.selectedChannelId();
     const connectedVoiceChannelId = this.voiceRoom.activeChannelId();
 
+    this.stopVoicePresencePolling();
     this.workspaceLoading.set(true);
     this.workspaceError.set(null);
     this.managementError.set(null);
@@ -875,16 +1165,20 @@ export class AppComponent {
     this.selectedServerId.set(serverId);
     this.selectedChannelId.set(null);
     this.selectedMemberUserId.set(null);
+    this.voicePresence.set([]);
+    this.resetTextChannelState();
 
     forkJoin({
       channels: this.workspaceApi.getChannels(token, serverId),
-      members: this.workspaceApi.getMembers(token, serverId)
+      members: this.workspaceApi.getMembers(token, serverId),
+      voicePresence: this.workspaceApi.getVoicePresence(token, serverId)
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ channels, members }) => {
+        next: ({ channels, members, voicePresence }) => {
           this.channels.set(channels);
           this.members.set(members);
+          this.voicePresence.set(voicePresence);
 
           const nextSelectedChannelId =
             (previousSelectedChannelId && channels.some((channel) => channel.id === previousSelectedChannelId)
@@ -897,11 +1191,19 @@ export class AppComponent {
             ?? null;
 
           this.selectedChannelId.set(nextSelectedChannelId);
+          const selectedChannel = channels.find((channel) => channel.id === nextSelectedChannelId) ?? null;
+          if (selectedChannel?.type === 'text') {
+            this.loadMessagesForChannel(token, selectedChannel.id);
+          }
+          this.startVoicePresencePolling();
           this.workspaceLoading.set(false);
         },
         error: (error) => {
+          this.stopVoicePresencePolling();
           this.channels.set([]);
           this.members.set([]);
+          this.voicePresence.set([]);
+          this.resetTextChannelState();
           this.workspaceLoading.set(false);
           this.workspaceError.set(this.extractErrorMessage(error, 'Не удалось загрузить данные выбранной группы'));
         }
@@ -917,6 +1219,112 @@ export class AppComponent {
 
     this.workspaceError.set(null);
     await this.voiceRoom.join(channel.id, token, currentUser);
+  }
+
+  private loadMessagesForChannel(token: string, channelId: string, before?: string | null): void {
+    const isLoadingMore = Boolean(before);
+    const listElement = this.messageListRef?.nativeElement;
+    const previousScrollHeight = listElement?.scrollHeight ?? 0;
+    const previousScrollTop = listElement?.scrollTop ?? 0;
+
+    if (isLoadingMore) {
+      if (this.messagesLoadingMore()) {
+        return;
+      }
+
+      this.messagesLoadingMore.set(true);
+    } else {
+      this.messagesLoading.set(true);
+      this.messages.set([]);
+      this.messagesHasMore.set(false);
+      this.messagesCursor.set(null);
+      this.messageError.set(null);
+    }
+
+    this.workspaceApi
+      .getMessages(token, channelId, MESSAGES_PAGE_SIZE, before)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (page) => {
+          if (this.selectedChannelId() !== channelId) {
+            return;
+          }
+
+          if (isLoadingMore) {
+            this.messages.update((messages) => [...page.items, ...messages]);
+          } else {
+            this.messages.set(page.items);
+          }
+
+          this.messagesHasMore.set(page.has_more);
+          this.messagesCursor.set(page.next_before);
+          this.messagesLoading.set(false);
+          this.messagesLoadingMore.set(false);
+
+          if (isLoadingMore) {
+            this.restoreMessageScrollPosition(previousScrollHeight, previousScrollTop);
+          } else {
+            this.scrollMessagesToBottom();
+          }
+        },
+        error: (error) => {
+          this.messagesLoading.set(false);
+          this.messagesLoadingMore.set(false);
+          this.messageError.set(this.extractErrorMessage(error, 'Не удалось загрузить сообщения'));
+        }
+      });
+  }
+
+  private loadOlderMessages(): void {
+    const token = this.session()?.access_token;
+    const activeChannel = this.activeChannel();
+    if (
+      !token
+      || !activeChannel
+      || activeChannel.type !== 'text'
+      || !this.messagesHasMore()
+      || !this.messagesCursor()
+      || this.messagesLoading()
+      || this.messagesLoadingMore()
+    ) {
+      return;
+    }
+
+    this.loadMessagesForChannel(token, activeChannel.id, this.messagesCursor());
+  }
+
+  private resetTextChannelState(): void {
+    this.messages.set([]);
+    this.messagesHasMore.set(false);
+    this.messagesCursor.set(null);
+    this.messagesLoading.set(false);
+    this.messagesLoadingMore.set(false);
+    this.messageSubmitting.set(false);
+    this.messageDraft.set('');
+    this.pendingFiles.set([]);
+    this.messageError.set(null);
+  }
+
+  private scrollMessagesToBottom(): void {
+    requestAnimationFrame(() => {
+      const element = this.messageListRef?.nativeElement;
+      if (!element) {
+        return;
+      }
+
+      element.scrollTop = element.scrollHeight;
+    });
+  }
+
+  private restoreMessageScrollPosition(previousScrollHeight: number, previousScrollTop: number): void {
+    requestAnimationFrame(() => {
+      const element = this.messageListRef?.nativeElement;
+      if (!element) {
+        return;
+      }
+
+      element.scrollTop = element.scrollHeight - previousScrollHeight + previousScrollTop;
+    });
   }
 
   private persistSession(session: AuthSessionResponse): void {
@@ -984,6 +1392,18 @@ export class AppComponent {
     return 'не в голосе';
   }
 
+  private formatVoiceActivityLabel(presence: MemberPresenceTone, channelName: string | null): string {
+    if (!channelName) {
+      return 'Не активен в каналах';
+    }
+
+    if (presence === 'speaking') {
+      return `Говорит в ${channelName}`;
+    }
+
+    return `В канале ${channelName}`;
+  }
+
   private getPresenceWeight(presence: MemberPresenceTone): number {
     if (presence === 'speaking') {
       return 0;
@@ -1010,6 +1430,32 @@ export class AppComponent {
     }
 
     return 2;
+  }
+
+  formatMessageTime(value: string): string {
+    const timestamp = Date.parse(value);
+    if (Number.isNaN(timestamp)) {
+      return value;
+    }
+
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date(timestamp));
+  }
+
+  formatFileSize(sizeBytes: number): string {
+    if (sizeBytes >= 1024 * 1024) {
+      return `${(sizeBytes / (1024 * 1024)).toFixed(1)} МБ`;
+    }
+
+    if (sizeBytes >= 1024) {
+      return `${Math.round(sizeBytes / 1024)} КБ`;
+    }
+
+    return `${sizeBytes} Б`;
   }
 
   private toRangeValue(value: number | string): number {

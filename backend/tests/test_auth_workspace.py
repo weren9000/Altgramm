@@ -71,6 +71,45 @@ def get_seed_server_and_voice_channel(client: TestClient, token: str) -> tuple[d
     return server, voice_channel
 
 
+def get_seed_server_and_text_channel(client: TestClient, token: str) -> tuple[dict[str, str], dict[str, str]]:
+    servers_response = client.get("/api/servers", headers={"Authorization": f"Bearer {token}"})
+    assert servers_response.status_code == 200
+    server = next(server for server in servers_response.json() if server["slug"] == "forgehold-collective")
+
+    channels_response = client.get(
+        f"/api/servers/{server['id']}/channels",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert channels_response.status_code == 200
+    text_channel = next(channel for channel in channels_response.json() if channel["type"] == "text")
+    return server, text_channel
+
+
+def create_temp_text_channel(client: TestClient, token: str, suffix: str) -> tuple[dict[str, str], dict[str, str]]:
+    create_group_response = client.post(
+        "/api/servers",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": f"Текстовая группа {suffix}",
+            "description": "Временная группа для тестов сообщений",
+        },
+    )
+    assert create_group_response.status_code == 201
+    group = create_group_response.json()
+
+    channel_response = client.post(
+        f"/api/servers/{group['id']}/channels",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": f"чат-{suffix}",
+            "topic": "Тестовый чат",
+            "type": "text",
+        },
+    )
+    assert channel_response.status_code == 201
+    return group, channel_response.json()
+
+
 def test_admin_login_returns_access_token() -> None:
     with TestClient(app) as client:
         token = login_admin_user(client)
@@ -211,6 +250,7 @@ def test_regular_user_can_access_all_groups_channels_and_members() -> None:
     members = members_response.json()
     assert members
     assert any(member["login"] == "weren9000" for member in members)
+    assert any(member["login"] == payload["login"] for member in members)
 
 
 def test_server_members_endpoint_returns_seed_members() -> None:
@@ -257,3 +297,88 @@ def test_regular_user_can_join_voice_channel() -> None:
                 assert isinstance(room_state["self_id"], str)
         finally:
             delete_user(payload["login"])
+
+
+def test_voice_presence_endpoint_returns_active_voice_participants() -> None:
+    with TestClient(app) as client:
+        token = login_admin_user(client)
+        server, voice_channel = get_seed_server_and_voice_channel(client, token)
+
+        with client.websocket_connect(f"/api/voice/channels/{voice_channel['id']}/ws?token={token}") as socket:
+            room_state = socket.receive_json()
+            assert room_state["type"] == "room_state"
+
+            response = client.get(
+                f"/api/servers/{server['id']}/voice-presence",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+    assert response.status_code == 200
+    channels = response.json()
+    assert channels
+    active_channel = next(channel for channel in channels if channel["channel_id"] == voice_channel["id"])
+    assert active_channel["participants"]
+    assert any(participant["user_id"] for participant in active_channel["participants"])
+
+
+def test_text_messages_endpoint_supports_lazy_loading() -> None:
+    with TestClient(app) as client:
+        token = login_admin_user(client)
+        _, text_channel = get_seed_server_and_text_channel(client, token)
+
+        first_page_response = client.get(
+            f"/api/channels/{text_channel['id']}/messages?limit=10",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert first_page_response.status_code == 200
+        first_page = first_page_response.json()
+        assert len(first_page["items"]) == 10
+        assert first_page["has_more"] is True
+        assert first_page["next_before"]
+
+        second_page_response = client.get(
+            f"/api/channels/{text_channel['id']}/messages?limit=10&before={first_page['next_before']}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert second_page_response.status_code == 200
+    second_page = second_page_response.json()
+    assert len(second_page["items"]) == 10
+    assert {message["id"] for message in first_page["items"]}.isdisjoint(
+        {message["id"] for message in second_page["items"]}
+    )
+
+
+def test_can_send_message_with_attachment_and_download_it() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        token = login_admin_user(client)
+        group, channel = create_temp_text_channel(client, token, suffix)
+
+        try:
+            create_message_response = client.post(
+                f"/api/channels/{channel['id']}/messages",
+                headers={"Authorization": f"Bearer {token}"},
+                data={"content": "Сообщение с вложением"},
+                files=[
+                    ("files", ("brief.txt", b"Tescord attachment payload", "text/plain")),
+                ],
+            )
+            assert create_message_response.status_code == 201
+            created_message = create_message_response.json()
+            assert created_message["content"] == "Сообщение с вложением"
+            assert len(created_message["attachments"]) == 1
+
+            attachment_id = created_message["attachments"][0]["id"]
+            download_response = client.get(
+                f"/api/attachments/{attachment_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            delete_server(group["id"])
+
+    assert download_response.status_code == 200
+    assert download_response.headers["content-type"].startswith("text/plain")
+    assert download_response.content == b"Tescord attachment payload"
