@@ -487,7 +487,6 @@ select {
 }
 
 .server-token__mark {
-  position: relative;
   width: 38px;
   height: 38px;
   flex: 0 0 38px;
@@ -500,30 +499,6 @@ select {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.server-token__mark::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 10px);
-  z-index: 1000;
-  padding: 6px 8px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface-strong);
-  color: var(--text);
-  font-size: 0.72rem;
-  font-weight: 500;
-  line-height: 1.2;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-50%);
-  transition: opacity 140ms ease;
-}
-
-.server-token__mark:hover::after {
-  opacity: 1;
 }
 
 .server-token--active {
@@ -1189,7 +1164,7 @@ select {
 
 .composer__surface {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 46px;
+  grid-template-columns: 42px minmax(0, 1fr) 46px 42px;
   align-items: end;
   gap: 8px;
   padding: 8px;
@@ -1218,6 +1193,49 @@ select {
 .composer__submit {
   font-size: 1.1rem;
   font-weight: 700;
+}
+
+.composer__refresh {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  align-self: end;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(97, 112, 126, 0.2);
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.composer__refresh:hover:not(:disabled) {
+  border-color: rgba(140, 220, 255, 0.28);
+  background: rgba(97, 112, 126, 0.34);
+}
+
+.composer__refresh:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.composer__refresh--active {
+  border-color: rgba(61, 214, 198, 0.44);
+  background: rgba(61, 214, 198, 0.18);
+}
+
+.composer__refresh-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(155, 171, 184, 0.9);
+  box-shadow: 0 0 0 1px rgba(16, 23, 33, 0.38);
+}
+
+.composer__refresh--active .composer__refresh-indicator {
+  background: var(--accent-cool);
 }
 
 .composer__field {
@@ -1701,13 +1719,14 @@ select {
   }
 
   .composer__surface {
-    grid-template-columns: 40px minmax(0, 1fr) 40px;
+    grid-template-columns: 40px minmax(0, 1fr) 40px 40px;
     gap: 6px;
     padding: 6px;
   }
 
   .composer__attach,
-  .composer__submit {
+  .composer__submit,
+  .composer__refresh {
     height: 40px;
     min-height: 40px;
   }

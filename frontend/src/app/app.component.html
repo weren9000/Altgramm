@@ -166,15 +166,16 @@
             <button
               class="server-token"
               [class.server-token--active]="server.active"
+              [attr.title]="server.name"
               type="button"
               (click)="selectServer(server.id)"
             >
-              <span class="server-token__mark" [attr.data-tooltip]="server.name">{{ server.label }}</span>
+              <span class="server-token__mark">{{ server.label }}</span>
             </button>
           }
         } @else {
-          <button class="server-token server-token--ghost" type="button" disabled>
-            <span class="server-token__mark" data-tooltip="Нет групп">--</span>
+          <button class="server-token server-token--ghost" type="button" disabled title="Нет групп">
+            <span class="server-token__mark">--</span>
           </button>
         }
       </div>
@@ -525,6 +526,18 @@
               >
                 {{ messageSubmitting() ? '...' : '→' }}
               </button>
+
+              <button
+                class="composer__refresh"
+                [class.composer__refresh--active]="autoRefreshEnabled()"
+                type="button"
+                (click)="toggleMessageAutoRefresh()"
+                [attr.aria-pressed]="autoRefreshEnabled()"
+                [attr.aria-label]="autoRefreshEnabled() ? 'Выключить автообновление чата' : 'Включить автообновление чата'"
+                [attr.title]="autoRefreshEnabled() ? 'Автообновление включено' : 'Автообновление выключено'"
+              >
+                <span class="composer__refresh-indicator"></span>
+              </button>
             </div>
 
             <div class="composer__meta">
@@ -543,6 +556,9 @@
                 <textarea disabled placeholder="Выберите текстовый канал" rows="1"></textarea>
               </label>
               <button class="primary-button composer__submit" type="button" disabled>→</button>
+              <button class="composer__refresh" type="button" disabled>
+                <span class="composer__refresh-indicator"></span>
+              </button>
             </div>
           }
         </section>

@@ -76,6 +76,7 @@ interface GroupMemberItem {
 const SESSION_STORAGE_KEY = 'tescord.session';
 const MESSAGES_PAGE_SIZE = 25;
 const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
+const MESSAGE_AUTO_REFRESH_INTERVAL_MS = 5000;
 const MEMBERS_POLL_INTERVAL_MS = 15000;
 const PRESENCE_ACTIVITY_THROTTLE_MS = 15000;
 const PRESENCE_KEEPALIVE_INTERVAL_MS = 30000;
@@ -105,6 +106,7 @@ export class AppComponent {
   };
   private voicePresencePollIntervalId: number | null = null;
   private memberPollIntervalId: number | null = null;
+  private messageAutoRefreshIntervalId: number | null = null;
   private presenceKeepaliveIntervalId: number | null = null;
   private lastPresenceHeartbeatAt = 0;
 
@@ -152,6 +154,7 @@ export class AppComponent {
   readonly mobilePanel = signal<MobilePanel>(null);
   readonly messageDraft = signal('');
   readonly pendingFiles = signal<File[]>([]);
+  readonly autoRefreshEnabled = signal(false);
 
   readonly loginForm: LoginFormModel = {
     login: '',
@@ -528,6 +531,7 @@ export class AppComponent {
     this.destroyRef.onDestroy(() => {
       this.stopVoicePresencePolling();
       this.stopMemberPolling();
+      this.stopMessageAutoRefreshPolling();
       this.stopPresenceKeepalive();
       this.teardownPresenceActivityTracking();
       this.clearAttachmentPreviews();
@@ -929,6 +933,7 @@ export class AppComponent {
   logout(): void {
     this.stopMemberPolling();
     this.stopVoicePresencePolling();
+    this.stopMessageAutoRefreshPolling();
     this.voiceRoom.leave();
     this.lastPresenceHeartbeatAt = 0;
     this.session.set(null);
@@ -968,6 +973,7 @@ export class AppComponent {
     this.closeMobilePanel();
     this.stopMemberPolling();
     this.stopVoicePresencePolling();
+    this.stopMessageAutoRefreshPolling();
     if (this.hasVoiceConnection()) {
       this.voiceRoom.leave();
     }
@@ -985,6 +991,7 @@ export class AppComponent {
 
     if (channel.type === 'voice') {
       this.resetTextChannelState();
+      this.syncMessageAutoRefreshPolling();
       await this.connectToVoiceChannel(channel);
       return;
     }
@@ -992,6 +999,16 @@ export class AppComponent {
     const token = this.session()?.access_token;
     if (token) {
       this.loadMessagesForChannel(token, channel.id);
+    }
+    this.syncMessageAutoRefreshPolling();
+  }
+
+  toggleMessageAutoRefresh(): void {
+    this.autoRefreshEnabled.update((currentValue) => !currentValue);
+    this.syncMessageAutoRefreshPolling();
+
+    if (this.autoRefreshEnabled()) {
+      this.refreshCurrentTextChannelMessages();
     }
   }
 
@@ -1317,6 +1334,7 @@ export class AppComponent {
           if (!servers.length) {
             this.stopMemberPolling();
             this.stopVoicePresencePolling();
+            this.stopMessageAutoRefreshPolling();
             this.resetTextChannelState();
             this.selectedServerId.set(null);
             this.selectedChannelId.set(null);
@@ -1338,6 +1356,7 @@ export class AppComponent {
         error: (error) => {
           this.stopMemberPolling();
           this.stopVoicePresencePolling();
+          this.stopMessageAutoRefreshPolling();
           this.workspaceLoading.set(false);
           this.voiceRoom.leave();
           this.session.set(null);
@@ -1400,11 +1419,13 @@ export class AppComponent {
           }
           this.startMemberPolling();
           this.startVoicePresencePolling();
+          this.syncMessageAutoRefreshPolling();
           this.workspaceLoading.set(false);
         },
         error: (error) => {
           this.stopMemberPolling();
           this.stopVoicePresencePolling();
+          this.stopMessageAutoRefreshPolling();
           this.channels.set([]);
           this.members.set([]);
           this.voicePresence.set([]);
@@ -1500,6 +1521,90 @@ export class AppComponent {
     this.loadMessagesForChannel(token, activeChannel.id, this.messagesCursor());
   }
 
+  private syncMessageAutoRefreshPolling(): void {
+    const token = this.session()?.access_token;
+    const activeChannel = this.activeChannel();
+    const shouldPoll = Boolean(
+      typeof window !== 'undefined' && this.autoRefreshEnabled() && token && activeChannel?.type === 'text'
+    );
+
+    if (!shouldPoll) {
+      this.stopMessageAutoRefreshPolling();
+      return;
+    }
+
+    if (this.messageAutoRefreshIntervalId !== null) {
+      return;
+    }
+
+    this.messageAutoRefreshIntervalId = window.setInterval(() => {
+      this.refreshCurrentTextChannelMessages();
+    }, MESSAGE_AUTO_REFRESH_INTERVAL_MS);
+  }
+
+  private stopMessageAutoRefreshPolling(): void {
+    if (this.messageAutoRefreshIntervalId !== null) {
+      window.clearInterval(this.messageAutoRefreshIntervalId);
+      this.messageAutoRefreshIntervalId = null;
+    }
+  }
+
+  private refreshCurrentTextChannelMessages(): void {
+    const token = this.session()?.access_token;
+    const activeChannel = this.activeChannel();
+    if (
+      !token
+      || !activeChannel
+      || activeChannel.type !== 'text'
+      || this.workspaceLoading()
+      || this.messagesLoading()
+      || this.messagesLoadingMore()
+    ) {
+      return;
+    }
+
+    const channelId = activeChannel.id;
+    const listElement = this.messageListRef?.nativeElement;
+    const isNearBottom = !listElement || listElement.scrollHeight - listElement.scrollTop - listElement.clientHeight <= 80;
+
+    this.workspaceApi
+      .getMessages(token, channelId, MESSAGES_PAGE_SIZE)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (page) => {
+          if (this.selectedChannelId() !== channelId) {
+            return;
+          }
+
+          const existingMessages = this.messages();
+          if (!existingMessages.length) {
+            this.messages.set(page.items);
+            this.primeAttachmentPreviews(page.items);
+            if (isNearBottom) {
+              this.scrollMessagesToBottom();
+            }
+            return;
+          }
+
+          const existingIds = new Set(existingMessages.map((message) => message.id));
+          const newItems = page.items.filter((message) => !existingIds.has(message.id));
+          if (!newItems.length) {
+            return;
+          }
+
+          this.messages.set(this.mergeMessagesChronologically([...existingMessages, ...page.items]));
+          this.primeAttachmentPreviews(newItems);
+
+          if (isNearBottom) {
+            this.scrollMessagesToBottom();
+          }
+        },
+        error: () => {
+          // Silent refresh should not interrupt reading with transient errors.
+        }
+      });
+  }
+
   private resetTextChannelState(): void {
     this.messages.set([]);
     this.clearAttachmentPreviews();
@@ -1512,6 +1617,16 @@ export class AppComponent {
     this.pendingFiles.set([]);
     this.messageError.set(null);
     this.scheduleMessageTextareaResize();
+  }
+
+  private mergeMessagesChronologically(messages: WorkspaceMessage[]): WorkspaceMessage[] {
+    const uniqueMessages = new Map<string, WorkspaceMessage>();
+
+    for (const message of messages) {
+      uniqueMessages.set(message.id, message);
+    }
+
+    return [...uniqueMessages.values()].sort((left, right) => left.created_at.localeCompare(right.created_at));
   }
 
   private scheduleMessageTextareaResize(): void {
