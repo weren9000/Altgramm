@@ -16,6 +16,9 @@
   --voice-open: #08a608;
   --voice-muted: #a60808;
   --offline: #61707e;
+  --scroll-track: rgba(255, 255, 255, 0.035);
+  --scroll-thumb: rgba(140, 220, 255, 0.32);
+  --scroll-thumb-hover: rgba(255, 159, 67, 0.42);
   --font-ui: "Aptos", "Segoe UI Variable", "Trebuchet MS", sans-serif;
 
   box-sizing: border-box;
@@ -36,6 +39,57 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+.server-rail__list,
+.channel-rail,
+.member-rail,
+.workspace-body,
+.message-list,
+.modal {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+  scrollbar-gutter: stable;
+}
+
+.server-rail__list::-webkit-scrollbar,
+.channel-rail::-webkit-scrollbar,
+.member-rail::-webkit-scrollbar,
+.workspace-body::-webkit-scrollbar,
+.message-list::-webkit-scrollbar,
+.modal::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.server-rail__list::-webkit-scrollbar-track,
+.channel-rail::-webkit-scrollbar-track,
+.member-rail::-webkit-scrollbar-track,
+.workspace-body::-webkit-scrollbar-track,
+.message-list::-webkit-scrollbar-track,
+.modal::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+}
+
+.server-rail__list::-webkit-scrollbar-thumb,
+.channel-rail::-webkit-scrollbar-thumb,
+.member-rail::-webkit-scrollbar-thumb,
+.workspace-body::-webkit-scrollbar-thumb,
+.message-list::-webkit-scrollbar-thumb,
+.modal::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background: linear-gradient(180deg, var(--scroll-thumb), rgba(61, 214, 198, 0.22));
+  background-clip: padding-box;
+}
+
+.server-rail__list:hover::-webkit-scrollbar-thumb,
+.channel-rail:hover::-webkit-scrollbar-thumb,
+.member-rail:hover::-webkit-scrollbar-thumb,
+.workspace-body:hover::-webkit-scrollbar-thumb,
+.message-list:hover::-webkit-scrollbar-thumb,
+.modal:hover::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--scroll-thumb-hover), rgba(140, 220, 255, 0.34));
+  background-clip: padding-box;
 }
 
 .auth-shell,
