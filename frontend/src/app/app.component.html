@@ -146,7 +146,47 @@
   </div>
 } @else {
   <div class="shell">
-    <aside class="server-rail">
+    <header class="mobile-toolbar">
+      <div class="mobile-toolbar__meta">
+        <strong>{{ activeServer()?.name ?? 'Tescord' }}</strong>
+        <small>{{ mobileWorkspaceSubtitle() }}</small>
+      </div>
+
+      <div class="mobile-toolbar__actions">
+        <button
+          class="mobile-nav-button"
+          [class.mobile-nav-button--active]="mobilePanel() === 'servers'"
+          type="button"
+          (click)="toggleMobilePanel('servers')"
+        >
+          Группы
+        </button>
+        <button
+          class="mobile-nav-button"
+          [class.mobile-nav-button--active]="mobilePanel() === 'channels'"
+          type="button"
+          (click)="toggleMobilePanel('channels')"
+          [disabled]="!activeServer()"
+        >
+          Каналы
+        </button>
+        <button
+          class="mobile-nav-button"
+          [class.mobile-nav-button--active]="mobilePanel() === 'members'"
+          type="button"
+          (click)="toggleMobilePanel('members')"
+          [disabled]="!activeServer()"
+        >
+          Участники
+        </button>
+      </div>
+    </header>
+
+    @if (mobilePanel()) {
+      <button class="mobile-backdrop" type="button" aria-label="Закрыть панель" (click)="closeMobilePanel()"></button>
+    }
+
+    <aside class="server-rail" [class.server-rail--mobile-open]="mobilePanel() === 'servers'">
       <div class="brand-mark">
         <span class="brand-mark__icon">TES</span>
       </div>
@@ -179,7 +219,7 @@
       </div>
     </aside>
 
-    <aside class="channel-rail">
+    <aside class="channel-rail" [class.channel-rail--mobile-open]="mobilePanel() === 'channels'">
       <header class="rail-header">
         <p class="eyebrow">Группа</p>
         <h1>{{ activeServer()?.name ?? 'Tescord' }}</h1>
@@ -481,7 +521,7 @@
       </section>
     </main>
 
-    <aside class="member-rail">
+    <aside class="member-rail" [class.member-rail--mobile-open]="mobilePanel() === 'members'">
       <section class="panel-card profile-card">
         <div class="panel-header">
           <div>

@@ -21,6 +21,7 @@ import { VoiceParticipant, VoiceRoomService } from './core/services/voice-room.s
 type AuthMode = 'login' | 'register';
 type ChannelKind = 'text' | 'voice';
 type MemberPresenceTone = 'inactive' | 'speaking' | 'open' | 'muted';
+type MobilePanel = 'servers' | 'channels' | 'members' | null;
 
 interface LoginFormModel {
   login: string;
@@ -112,6 +113,7 @@ export class AppComponent {
   readonly createGroupModalOpen = signal(false);
   readonly createChannelModalOpen = signal(false);
   readonly selectedMemberUserId = signal<string | null>(null);
+  readonly mobilePanel = signal<MobilePanel>(null);
 
   readonly loginForm: LoginFormModel = {
     login: '',
@@ -421,6 +423,15 @@ export class AppComponent {
     return 'неизвестно';
   });
 
+  readonly mobileWorkspaceSubtitle = computed(() => {
+    const activeChannel = this.activeChannel();
+    if (activeChannel) {
+      return activeChannel.type === 'voice' ? `Голосовой: ${activeChannel.name}` : `# ${activeChannel.name}`;
+    }
+
+    return this.activeServer()?.description ?? 'Откройте группу и выберите канал';
+  });
+
   constructor() {
     this.loadHealth();
     this.restoreSession();
@@ -494,6 +505,7 @@ export class AppComponent {
   }
 
   openVoiceSettings(): void {
+    this.closeMobilePanel();
     this.settingsPanelOpen.set(true);
     void this.voiceRoom.refreshDevices();
   }
@@ -507,6 +519,7 @@ export class AppComponent {
       return;
     }
 
+    this.closeMobilePanel();
     this.createGroupModalOpen.set(true);
     this.managementError.set(null);
     this.managementSuccess.set(null);
@@ -521,6 +534,7 @@ export class AppComponent {
       return;
     }
 
+    this.closeMobilePanel();
     this.createChannelForm.type = type;
     this.createChannelModalOpen.set(true);
     this.managementError.set(null);
@@ -532,6 +546,7 @@ export class AppComponent {
   }
 
   openMemberVolume(member: GroupMemberItem): void {
+    this.closeMobilePanel();
     this.selectedMemberUserId.set(member.userId);
   }
 
@@ -651,7 +666,16 @@ export class AppComponent {
       return;
     }
 
+    this.closeMobilePanel();
     this.selectedChannelId.set(connectedVoiceChannel.id);
+  }
+
+  toggleMobilePanel(panel: Exclude<MobilePanel, null>): void {
+    this.mobilePanel.set(this.mobilePanel() === panel ? null : panel);
+  }
+
+  closeMobilePanel(): void {
+    this.mobilePanel.set(null);
   }
 
   changeInputDevice(deviceId: string): void {
@@ -691,6 +715,7 @@ export class AppComponent {
     this.createGroupModalOpen.set(false);
     this.createChannelModalOpen.set(false);
     this.selectedMemberUserId.set(null);
+    this.mobilePanel.set(null);
     this.authError.set(null);
     this.workspaceError.set(null);
     this.managementError.set(null);
@@ -709,6 +734,7 @@ export class AppComponent {
       return;
     }
 
+    this.closeMobilePanel();
     if (this.hasVoiceConnection()) {
       this.voiceRoom.leave();
     }
@@ -717,6 +743,7 @@ export class AppComponent {
   }
 
   async selectChannel(channel: WorkspaceChannel): Promise<void> {
+    this.closeMobilePanel();
     this.selectedChannelId.set(channel.id);
     this.workspaceError.set(null);
 
@@ -791,6 +818,7 @@ export class AppComponent {
   private bootstrapWorkspace(token: string): void {
     this.workspaceLoading.set(true);
     this.workspaceError.set(null);
+    this.closeMobilePanel();
     this.voiceRoom.leave();
 
     forkJoin({
