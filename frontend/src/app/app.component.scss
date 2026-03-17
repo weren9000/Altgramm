@@ -477,7 +477,8 @@ select {
   min-height: 58px;
   padding: 10px;
   color: inherit;
-  text-align: left;
+  justify-content: center;
+  text-align: center;
   cursor: pointer;
   transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
 }
@@ -487,6 +488,7 @@ select {
 }
 
 .server-token__mark {
+  position: relative;
   width: 38px;
   height: 38px;
   flex: 0 0 38px;
@@ -501,22 +503,28 @@ select {
   text-transform: uppercase;
 }
 
-.server-token__meta {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
+.server-token__mark::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 10px);
+  z-index: 5;
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity 140ms ease;
 }
 
-.server-token__meta strong {
-  display: block;
-  min-width: 0;
-  color: #ffffff;
-  font-size: 0.88rem;
-  font-weight: 600;
-  line-height: 1.25;
-  text-align: left;
+.server-token__mark:hover::after {
+  opacity: 1;
 }
 
 .server-token--active {

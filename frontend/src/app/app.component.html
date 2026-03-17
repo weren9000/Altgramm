@@ -169,18 +169,12 @@
               type="button"
               (click)="selectServer(server.id)"
             >
-              <span class="server-token__mark">{{ server.label }}</span>
-              <span class="server-token__meta">
-                <strong>{{ server.name }}</strong>
-              </span>
+              <span class="server-token__mark" [attr.data-tooltip]="server.name">{{ server.label }}</span>
             </button>
           }
         } @else {
           <button class="server-token server-token--ghost" type="button" disabled>
-            <span class="server-token__mark">--</span>
-            <span class="server-token__meta">
-              <strong>Нет групп</strong>
-            </span>
+            <span class="server-token__mark" data-tooltip="Нет групп">--</span>
           </button>
         }
       </div>
