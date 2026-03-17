@@ -673,6 +673,8 @@ select {
 
 .workspace-body {
   min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .workspace-overlay {
