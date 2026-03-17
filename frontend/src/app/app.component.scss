@@ -903,7 +903,8 @@ select {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
+  padding-right: 6px;
   overflow: auto;
 }
 
@@ -920,39 +921,77 @@ select {
 
 .message-card {
   display: flex;
-  gap: 14px;
-  padding: 16px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: transparent;
 }
 
 .message-card__avatar {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   display: grid;
   place-items: center;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--avatar-accent) 20%, rgba(255, 255, 255, 0.03));
   color: #fff7ec;
   font-weight: 700;
+  font-size: 0.78rem;
 }
 
 .message-card__body {
   min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .message-card__meta {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.message-card__author {
+  min-width: 0;
+  display: flex;
   flex-wrap: wrap;
-  gap: 10px;
   align-items: baseline;
-  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.message-card__author strong {
+  font-size: 0.96rem;
+  line-height: 1.2;
+}
+
+.message-card__author span {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.message-card__meta time {
+  flex: 0 0 auto;
+  font-size: 0.76rem;
+}
+
+.message-card__text {
+  margin: 0;
+  line-height: 1.5;
+  color: #f1ede5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .message-attachments,
 .composer__files {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .attachment-chip {
@@ -961,12 +1000,13 @@ select {
   align-items: flex-start;
   gap: 4px;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 9px 10px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
   text-align: left;
   cursor: pointer;
+  max-width: 240px;
 }
 
 .attachment-chip strong,
@@ -985,9 +1025,9 @@ select {
 .attachment-preview {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: min(280px, 100%);
-  padding: 8px;
+  gap: 6px;
+  width: min(220px, 100%);
+  padding: 6px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
@@ -998,7 +1038,7 @@ select {
 .attachment-preview img {
   display: block;
   width: 100%;
-  max-height: 260px;
+  max-height: 180px;
   object-fit: cover;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.02);
@@ -1007,10 +1047,43 @@ select {
 .attachment-preview span {
   display: block;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.audio-attachment {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(260px, 100%);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.audio-attachment__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.audio-attachment__meta strong {
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.audio-attachment__meta small {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.audio-attachment audio {
+  width: 100%;
+  height: 28px;
 }
 
 .attachment-chip--pending {
@@ -1249,6 +1322,41 @@ select {
 
 .modal-note--live {
   color: var(--voice-speaking);
+}
+
+.image-lightbox {
+  padding: 24px;
+  background: rgba(6, 9, 14, 0.88);
+}
+
+.image-lightbox__dialog {
+  position: relative;
+  max-width: min(96vw, 1100px);
+  max-height: min(92vh, 900px);
+  display: grid;
+  place-items: center;
+}
+
+.image-lightbox__close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line-strong);
+  background: rgba(12, 18, 26, 0.92);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.image-lightbox__image {
+  display: block;
+  max-width: 100%;
+  max-height: 88vh;
+  border: 1px solid var(--line);
+  background: rgba(12, 18, 26, 0.96);
+  object-fit: contain;
+  cursor: zoom-out;
 }
 
 .eyebrow {

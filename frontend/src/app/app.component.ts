@@ -94,8 +94,8 @@ export class AppComponent {
   private readonly workspaceApi = inject(WorkspaceApiService);
   private readonly voiceRoom = inject(VoiceRoomService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly imageAttachmentUrls = signal<Record<string, string>>({});
-  private readonly loadingImageAttachmentIds = new Set<string>();
+  private readonly attachmentPreviewUrls = signal<Record<string, string>>({});
+  private readonly loadingAttachmentPreviewIds = new Set<string>();
   private readonly handlePresenceActivity = () => this.schedulePresenceHeartbeat();
   private readonly handleVisibilityChange = () => {
     if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
@@ -145,6 +145,7 @@ export class AppComponent {
   readonly createGroupModalOpen = signal(false);
   readonly createChannelModalOpen = signal(false);
   readonly selectedMemberUserId = signal<string | null>(null);
+  readonly openedImageAttachmentId = signal<string | null>(null);
   readonly mobilePanel = signal<MobilePanel>(null);
   readonly messageDraft = signal('');
   readonly pendingFiles = signal<File[]>([]);
@@ -454,6 +455,27 @@ export class AppComponent {
     return this.voiceRoom.getParticipantVolume(member.userId);
   });
 
+  readonly openedImageAttachment = computed(() => {
+    const attachmentId = this.openedImageAttachmentId();
+    if (!attachmentId) {
+      return null;
+    }
+
+    for (const message of this.messages()) {
+      const attachment = message.attachments.find((item) => item.id === attachmentId);
+      if (attachment) {
+        return attachment;
+      }
+    }
+
+    return null;
+  });
+
+  readonly openedImageAttachmentUrl = computed(() => {
+    const attachment = this.openedImageAttachment();
+    return attachment ? this.attachmentPreviewUrl(attachment) : null;
+  });
+
   readonly localizedEnvironment = computed(() => {
     const environment = this.health()?.environment;
 
@@ -505,7 +527,7 @@ export class AppComponent {
       this.stopMemberPolling();
       this.stopPresenceKeepalive();
       this.teardownPresenceActivityTracking();
-      this.clearImageAttachmentPreviews();
+      this.clearAttachmentPreviews();
     });
     this.setupPresenceActivityTracking();
     this.startPresenceKeepalive();
@@ -799,7 +821,7 @@ export class AppComponent {
           }
 
           this.messages.update((messages) => [...messages, message]);
-          this.primeImageAttachmentPreviews([message]);
+          this.primeAttachmentPreviews([message]);
           this.scrollMessagesToBottom();
         },
         error: (error) => {
@@ -977,8 +999,12 @@ export class AppComponent {
     return participant.speaking ? 'speaking' : 'open';
   }
 
+  attachmentPreviewUrl(attachment: WorkspaceMessageAttachment): string | null {
+    return this.attachmentPreviewUrls()[attachment.id] ?? null;
+  }
+
   imagePreviewUrl(attachment: WorkspaceMessageAttachment): string | null {
-    return this.imageAttachmentUrls()[attachment.id] ?? null;
+    return this.attachmentPreviewUrl(attachment);
   }
 
   isInlineImageAttachment(attachment: WorkspaceMessageAttachment): boolean {
@@ -990,14 +1016,33 @@ export class AppComponent {
     return /\.(png|jpe?g)$/i.test(attachment.filename);
   }
 
+  isInlineAudioAttachment(attachment: WorkspaceMessageAttachment): boolean {
+    const mimeType = attachment.mime_type.toLowerCase();
+    if (mimeType === 'audio/mpeg' || mimeType === 'audio/mp3' || mimeType === 'audio/x-mpeg') {
+      return true;
+    }
+
+    return /\.mp3$/i.test(attachment.filename);
+  }
+
+  audioPreviewUrl(attachment: WorkspaceMessageAttachment): string | null {
+    return this.attachmentPreviewUrl(attachment);
+  }
+
   openImageAttachment(attachment: WorkspaceMessageAttachment): void {
     const previewUrl = this.imagePreviewUrl(attachment);
     if (previewUrl) {
-      window.open(previewUrl, '_blank', 'noopener,noreferrer');
+      this.openedImageAttachmentId.set(
+        this.openedImageAttachmentId() === attachment.id ? null : attachment.id
+      );
       return;
     }
 
     this.downloadAttachment(attachment);
+  }
+
+  closeImageAttachment(): void {
+    this.openedImageAttachmentId.set(null);
   }
 
   private startVoicePresencePolling(): void {
@@ -1384,7 +1429,7 @@ export class AppComponent {
     } else {
       this.messagesLoading.set(true);
       this.messages.set([]);
-      this.clearImageAttachmentPreviews();
+      this.clearAttachmentPreviews();
       this.messagesHasMore.set(false);
       this.messagesCursor.set(null);
       this.messageError.set(null);
@@ -1404,7 +1449,7 @@ export class AppComponent {
           } else {
             this.messages.set(page.items);
           }
-          this.primeImageAttachmentPreviews(page.items);
+          this.primeAttachmentPreviews(page.items);
 
           this.messagesHasMore.set(page.has_more);
           this.messagesCursor.set(page.next_before);
@@ -1445,7 +1490,7 @@ export class AppComponent {
 
   private resetTextChannelState(): void {
     this.messages.set([]);
-    this.clearImageAttachmentPreviews();
+    this.clearAttachmentPreviews();
     this.messagesHasMore.set(false);
     this.messagesCursor.set(null);
     this.messagesLoading.set(false);
@@ -1478,7 +1523,7 @@ export class AppComponent {
     });
   }
 
-  private primeImageAttachmentPreviews(messages: WorkspaceMessage[]): void {
+  private primeAttachmentPreviews(messages: WorkspaceMessage[]): void {
     const token = this.session()?.access_token;
     if (!token) {
       return;
@@ -1486,21 +1531,21 @@ export class AppComponent {
 
     for (const message of messages) {
       for (const attachment of message.attachments) {
-        if (!this.isInlineImageAttachment(attachment)) {
+        if (!this.isInlineImageAttachment(attachment) && !this.isInlineAudioAttachment(attachment)) {
           continue;
         }
 
-        if (this.imageAttachmentUrls()[attachment.id] || this.loadingImageAttachmentIds.has(attachment.id)) {
+        if (this.attachmentPreviewUrls()[attachment.id] || this.loadingAttachmentPreviewIds.has(attachment.id)) {
           continue;
         }
 
-        this.loadingImageAttachmentIds.add(attachment.id);
+        this.loadingAttachmentPreviewIds.add(attachment.id);
         this.workspaceApi
           .downloadAttachment(token, attachment.id)
           .pipe(takeUntilDestroyed(this.destroyRef))
           .subscribe({
             next: (blob) => {
-              this.loadingImageAttachmentIds.delete(attachment.id);
+              this.loadingAttachmentPreviewIds.delete(attachment.id);
               const objectUrl = URL.createObjectURL(blob);
               const attachmentStillVisible = this.messages().some((message) =>
                 message.attachments.some((messageAttachment) => messageAttachment.id === attachment.id)
@@ -1510,27 +1555,28 @@ export class AppComponent {
                 return;
               }
 
-              this.imageAttachmentUrls.update((currentUrls) => ({
+              this.attachmentPreviewUrls.update((currentUrls) => ({
                 ...currentUrls,
                 [attachment.id]: objectUrl
               }));
             },
             error: () => {
-              this.loadingImageAttachmentIds.delete(attachment.id);
+              this.loadingAttachmentPreviewIds.delete(attachment.id);
             }
           });
       }
     }
   }
 
-  private clearImageAttachmentPreviews(): void {
-    const currentUrls = this.imageAttachmentUrls();
+  private clearAttachmentPreviews(): void {
+    const currentUrls = this.attachmentPreviewUrls();
     for (const objectUrl of Object.values(currentUrls)) {
       URL.revokeObjectURL(objectUrl);
     }
 
-    this.loadingImageAttachmentIds.clear();
-    this.imageAttachmentUrls.set({});
+    this.loadingAttachmentPreviewIds.clear();
+    this.attachmentPreviewUrls.set({});
+    this.openedImageAttachmentId.set(null);
   }
 
   private persistSession(session: AuthSessionResponse): void {
