@@ -524,7 +524,11 @@
                 aria-label="Отправить сообщение"
                 title="Отправить сообщение"
               >
-                {{ messageSubmitting() ? '...' : '→' }}
+                @if (messageSubmitting()) {
+                  ...
+                } @else {
+                  <img src="/assets/Enter.svg" alt="" />
+                }
               </button>
 
               <button
@@ -536,7 +540,7 @@
                 [attr.aria-label]="autoRefreshEnabled() ? 'Выключить автообновление чата' : 'Включить автообновление чата'"
                 [attr.title]="autoRefreshEnabled() ? 'Автообновление включено' : 'Автообновление выключено'"
               >
-                <span class="composer__refresh-indicator"></span>
+                <img class="composer__refresh-icon" src="/assets/Refresh.svg" alt="" />
               </button>
             </div>
 
@@ -555,9 +559,11 @@
               <label class="composer__field">
                 <textarea disabled placeholder="Выберите текстовый канал" rows="1"></textarea>
               </label>
-              <button class="primary-button composer__submit" type="button" disabled>→</button>
+              <button class="primary-button composer__submit" type="button" disabled>
+                <img src="/assets/Enter.svg" alt="" />
+              </button>
               <button class="composer__refresh" type="button" disabled>
-                <span class="composer__refresh-indicator"></span>
+                <img class="composer__refresh-icon" src="/assets/Refresh.svg" alt="" />
               </button>
             </div>
           }

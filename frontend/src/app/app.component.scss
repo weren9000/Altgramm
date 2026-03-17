@@ -1195,6 +1195,20 @@ select {
   font-weight: 700;
 }
 
+.composer__submit img,
+.composer__refresh-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.composer__submit img {
+  filter: brightness(0) saturate(100%) invert(92%) sepia(10%) saturate(637%) hue-rotate(329deg) brightness(102%)
+    contrast(91%);
+}
+
 .composer__refresh {
   width: 42px;
   height: 42px;
@@ -1226,16 +1240,14 @@ select {
   background: rgba(61, 214, 198, 0.18);
 }
 
-.composer__refresh-indicator {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: rgba(155, 171, 184, 0.9);
-  box-shadow: 0 0 0 1px rgba(16, 23, 33, 0.38);
+.composer__refresh-icon {
+  filter: brightness(0) saturate(100%) invert(66%) sepia(10%) saturate(425%) hue-rotate(168deg) brightness(86%)
+    contrast(86%);
 }
 
-.composer__refresh--active .composer__refresh-indicator {
-  background: var(--accent-cool);
+.composer__refresh--active .composer__refresh-icon {
+  filter: brightness(0) saturate(100%) invert(79%) sepia(22%) saturate(1097%) hue-rotate(140deg) brightness(102%)
+    contrast(96%);
 }
 
 .composer__field {
@@ -1559,7 +1571,7 @@ select {
   }
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 900px) {
   .auth-shell {
     grid-template-columns: 1fr;
   }
