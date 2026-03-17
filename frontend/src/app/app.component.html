@@ -169,14 +169,18 @@
               type="button"
               (click)="selectServer(server.id)"
             >
-              <strong>{{ server.label }}</strong>
-              <small>{{ server.name }}</small>
+              <span class="server-token__mark">{{ server.label }}</span>
+              <span class="server-token__meta">
+                <strong>{{ server.name }}</strong>
+              </span>
             </button>
           }
         } @else {
           <button class="server-token server-token--ghost" type="button" disabled>
-            <strong>--</strong>
-            <small>Нет групп</small>
+            <span class="server-token__mark">--</span>
+            <span class="server-token__meta">
+              <strong>Нет групп</strong>
+            </span>
           </button>
         }
       </div>
@@ -215,7 +219,9 @@
               <span class="channel-link__prefix">#</span>
               <div class="channel-link__body">
                 <strong>{{ channel.name }}</strong>
-                <small>{{ channel.topic ?? 'Текстовый канал' }}</small>
+                @if (channel.topic) {
+                  <small>{{ channel.topic }}</small>
+                }
               </div>
             </button>
           }
@@ -251,9 +257,7 @@
                 <div class="channel-link__body">
                   <strong>{{ channel.name }}</strong>
                   @if (channel.id === connectedVoiceChannel()?.id) {
-                    <small>Подключено · клик откроет комнату</small>
-                  } @else {
-                    <small>Подключение по клику</small>
+                    <small>В голосе</small>
                   }
                 </div>
               </button>
