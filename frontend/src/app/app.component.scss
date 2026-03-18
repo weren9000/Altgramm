@@ -891,9 +891,9 @@ select {
 }
 
 .voice-workspace__top {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
 
@@ -920,27 +920,32 @@ select {
   max-width: 100%;
 }
 
-.voice-workspace__controls,
+.voice-workspace__placeholder,
+.voice-workspace__mute,
+.voice-workspace__leave,
 .voice-workspace__join {
+  min-width: 44px;
+}
+
+.voice-workspace__placeholder {
+  width: 44px;
+  height: 44px;
+  display: block;
+}
+
+.voice-workspace__join {
+  margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.voice-workspace__controls {
-  margin-left: auto;
-}
-
-.voice-workspace__join {
-  margin-left: auto;
+  justify-content: flex-end;
 }
 
 .voice-workspace__join > button {
   min-width: 0;
 }
 
-.voice-workspace__controls .voice-mute-button,
-.voice-workspace__controls .voice-leave-button {
+.voice-workspace__mute,
+.voice-workspace__leave {
   width: 44px;
   min-width: 44px;
   height: 44px;
@@ -2124,14 +2129,13 @@ select {
   }
 
   .voice-workspace__top {
-    display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: start;
     gap: 10px;
   }
 
-  .voice-workspace__controls {
-    margin-left: 0;
+  .voice-workspace__mute,
+  .voice-workspace__placeholder {
     grid-column: 1;
     grid-row: 1;
     align-self: start;
@@ -2142,9 +2146,17 @@ select {
     grid-row: 1;
   }
 
+  .voice-workspace__leave {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: start;
+  }
+
   .voice-workspace__join {
-    grid-column: 1 / -1;
+    grid-column: 1;
+    grid-row: 2;
     margin-left: 0;
+    justify-content: flex-start;
   }
 
   .voice-dock__top {
@@ -2239,15 +2251,16 @@ select {
     width: 100%;
   }
 
-  .voice-workspace__controls .voice-mute-button,
-  .voice-workspace__controls .voice-leave-button {
+  .voice-workspace__mute,
+  .voice-workspace__leave,
+  .voice-workspace__placeholder {
     width: 38px;
     min-width: 38px;
     height: 38px;
   }
 
-  .voice-workspace__controls .voice-mute-button img,
-  .voice-workspace__controls .voice-leave-button img {
+  .voice-workspace__mute img,
+  .voice-workspace__leave img {
     width: 16px;
     height: 16px;
   }

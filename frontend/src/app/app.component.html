@@ -381,6 +381,20 @@
       @if (showVoiceWorkspaceShell()) {
         <section class="voice-workspace">
           <div class="voice-workspace__top">
+            @if (isInActiveVoiceChannel()) {
+              <button
+                class="secondary-button voice-mute-button voice-workspace__mute"
+                type="button"
+                (click)="toggleVoiceMute()"
+                [attr.aria-label]="voiceMuteControlLabel()"
+                [attr.title]="voiceMuteControlLabel()"
+              >
+                <img [src]="voiceMuteControlIconPath()" alt="" />
+              </button>
+            } @else {
+              <span class="voice-workspace__placeholder" aria-hidden="true"></span>
+            }
+
             <div class="voice-workspace__meta">
               <p class="eyebrow">Голосовой канал</p>
               <strong>{{ activeChannel()?.name }}</strong>
@@ -388,20 +402,15 @@
             </div>
 
             @if (isInActiveVoiceChannel()) {
-              <div class="voice-workspace__controls">
-                <button
-                  class="secondary-button voice-mute-button"
-                  type="button"
-                  (click)="toggleVoiceMute()"
-                  [attr.aria-label]="voiceMuteControlLabel()"
-                  [attr.title]="voiceMuteControlLabel()"
-                >
-                  <img [src]="voiceMuteControlIconPath()" alt="" />
-                </button>
-                <button class="primary-button voice-leave-button" type="button" (click)="leaveVoiceChannel()" aria-label="Отключиться" title="Отключиться">
-                  <img src="/assets/Phone outgoing.svg" alt="" />
-                </button>
-              </div>
+              <button
+                class="primary-button voice-leave-button voice-workspace__leave"
+                type="button"
+                (click)="leaveVoiceChannel()"
+                aria-label="Отключиться"
+                title="Отключиться"
+              >
+                <img src="/assets/Phone outgoing.svg" alt="" />
+              </button>
             } @else {
               <div class="voice-workspace__join">
                 <button class="secondary-button" type="button" (click)="joinActiveVoiceChannel()">
