@@ -195,7 +195,6 @@ export class AppComponent {
   readonly openedImageAttachmentId = signal<string | null>(null);
   readonly mobilePanel = signal<MobilePanel>(null);
   readonly voiceWorkspaceTab = signal<VoiceWorkspaceTab>('chat');
-  readonly voiceWorkspaceCollapsed = signal(true);
   readonly messageDraft = signal('');
   readonly pendingFiles = signal<File[]>([]);
   readonly voiceAdminChannelsLoading = signal(false);
@@ -1282,15 +1281,10 @@ export class AppComponent {
     this.closeMobilePanel();
     this.selectedChannelId.set(connectedVoiceChannel.id);
     this.voiceWorkspaceTab.set(this.defaultVoiceWorkspaceTab());
-    this.voiceWorkspaceCollapsed.set(this.isCompactVoiceWorkspaceViewport());
   }
 
   selectVoiceWorkspaceTab(tab: VoiceWorkspaceTab): void {
     this.voiceWorkspaceTab.set(tab);
-  }
-
-  toggleVoiceWorkspaceCollapsed(): void {
-    this.voiceWorkspaceCollapsed.update((value) => !value);
   }
 
   toggleMobilePanel(panel: Exclude<MobilePanel, null>): void {
@@ -1554,10 +1548,8 @@ export class AppComponent {
 
     if (channel.type === 'voice') {
       this.voiceWorkspaceTab.set(this.defaultVoiceWorkspaceTab());
-      this.voiceWorkspaceCollapsed.set(this.isCompactVoiceWorkspaceViewport());
     } else {
       this.voiceWorkspaceTab.set('chat');
-      this.voiceWorkspaceCollapsed.set(false);
     }
 
     const token = this.session()?.access_token;

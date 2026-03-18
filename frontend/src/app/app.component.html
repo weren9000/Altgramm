@@ -364,22 +364,16 @@
       }
 
       @if (showVoiceWorkspaceShell()) {
-        <section class="voice-workspace" [class.voice-workspace--collapsed]="voiceWorkspaceCollapsed()">
+        <section class="voice-workspace">
           <div class="voice-workspace__top">
             <div class="voice-workspace__meta">
               <p class="eyebrow">Голосовой канал</p>
               <strong>{{ activeChannel()?.name }}</strong>
-              @if (!voiceWorkspaceCollapsed()) {
-                <small>{{ voiceStatusLabel() }} · участников: {{ activeVoiceRosterCount() }}</small>
-              }
+              <small>{{ voiceStatusLabel() }} · участников: {{ activeVoiceRosterCount() }}</small>
             </div>
 
-            <div class="voice-workspace__actions">
-              @if (!isInActiveVoiceChannel()) {
-                <button class="secondary-button" type="button" (click)="joinActiveVoiceChannel()">
-                  {{ hasVoiceConnection() ? 'Перейти в канал' : 'Подключиться' }}
-                </button>
-              } @else {
+            @if (isInActiveVoiceChannel()) {
+              <div class="voice-workspace__controls">
                 <button
                   class="secondary-button voice-mute-button"
                   type="button"
@@ -392,18 +386,14 @@
                 <button class="primary-button voice-leave-button" type="button" (click)="leaveVoiceChannel()" aria-label="Отключиться" title="Отключиться">
                   <img src="/assets/Phone outgoing.svg" alt="" />
                 </button>
-              }
-
-              <button
-                class="secondary-button voice-workspace__collapse"
-                type="button"
-                (click)="toggleVoiceWorkspaceCollapsed()"
-                [attr.aria-label]="voiceWorkspaceCollapsed() ? 'Развернуть сведения о голосовом канале' : 'Свернуть сведения о голосовом канале'"
-                [attr.title]="voiceWorkspaceCollapsed() ? 'Развернуть' : 'Свернуть'"
-              >
-                {{ voiceWorkspaceCollapsed() ? '▸' : '▾' }}
-              </button>
-            </div>
+              </div>
+            } @else {
+              <div class="voice-workspace__join">
+                <button class="secondary-button" type="button" (click)="joinActiveVoiceChannel()">
+                  {{ hasVoiceConnection() ? 'Перейти в канал' : 'Подключиться' }}
+                </button>
+              </div>
+            }
           </div>
 
           <div class="voice-workspace__tabs" role="tablist" aria-label="Режим голосового канала">
