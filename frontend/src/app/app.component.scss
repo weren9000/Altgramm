@@ -1137,8 +1137,10 @@ select {
 }
 
 .message-list__empty {
-  margin: auto 0;
-  padding: 10px 0 12px;
+  margin: 6px 0 0;
+  padding: 18px 12px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.02);
   color: var(--muted);
   text-align: center;
   font-size: 0.86rem;
@@ -1869,10 +1871,24 @@ select {
 @media (max-width: 920px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: start;
   }
 
   .mobile-toolbar {
+    grid-column: 1;
+    grid-row: 1;
     grid-template-columns: 1fr;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    align-self: start;
+  }
+
+  .workspace {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
   }
 
   .server-rail,
@@ -1893,6 +1909,8 @@ select {
   .channel-rail,
   .member-rail {
     position: fixed;
+    grid-column: 1;
+    grid-row: 1;
   }
 
   .server-rail {
@@ -2128,8 +2146,9 @@ select {
   }
 
   .message-list__empty {
+    margin-top: 4px;
+    padding: 14px 10px;
     font-size: 0.8rem;
-    padding: 8px 0;
   }
 
   .composer__files {
