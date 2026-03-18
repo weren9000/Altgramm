@@ -30,6 +30,12 @@ from app.schemas.voice import (
     VoiceJoinRequestCreateResponse,
     VoiceJoinRequestSummary,
 )
+from app.services.app_events import (
+    publish_server_changed,
+    publish_voice_inbox_changed,
+    publish_voice_inbox_changed_from_sync,
+    publish_voice_request_resolved,
+)
 from app.services.voice_access import (
     build_voice_join_gate,
     block_stranger_access,
@@ -323,7 +329,9 @@ async def update_voice_channel_access(
 
         _upsert_voice_access(db, channel, target_user, VoiceAccessRole.OWNER)
         db.commit()
-        return _load_channel_access_entries(db, channel.id)
+        entries = _load_channel_access_entries(db, channel.id)
+        await publish_server_changed(channel.server_id, reason="voice_access_changed")
+        return entries
 
     if payload.role is None:
         if current_access is None:
@@ -337,7 +345,9 @@ async def update_voice_channel_access(
 
         db.delete(current_access)
         db.commit()
-        return _load_channel_access_entries(db, channel.id)
+        entries = _load_channel_access_entries(db, channel.id)
+        await publish_server_changed(channel.server_id, reason="voice_access_changed")
+        return entries
 
     next_role = VoiceAccessRole(payload.role)
     if not current_user.is_admin and next_role == VoiceAccessRole.OWNER:
@@ -351,7 +361,9 @@ async def update_voice_channel_access(
 
     _upsert_voice_access(db, channel, target_user, next_role)
     db.commit()
-    return _load_channel_access_entries(db, channel.id)
+    entries = _load_channel_access_entries(db, channel.id)
+    await publish_server_changed(channel.server_id, reason="voice_access_changed")
+    return entries
 
 
 @router.post("/channels/{channel_id}/requests", response_model=VoiceJoinRequestCreateResponse)
@@ -417,6 +429,7 @@ def create_voice_join_request(
     db.add(request)
     db.commit()
     db.refresh(request)
+    publish_voice_inbox_changed_from_sync()
 
     return VoiceJoinRequestCreateResponse(
         request=_build_voice_join_request_summary(request, channel, current_user),
@@ -524,8 +537,12 @@ async def resolve_voice_join_request(
     request.resolved_at = now
     db.commit()
     db.refresh(request)
+    request_summary = _build_voice_join_request_summary(request, channel, requester, access)
+    await publish_voice_inbox_changed()
+    await publish_voice_request_resolved(requester.id, request_summary.model_dump(mode="json"))
+    await publish_server_changed(channel.server_id, reason="voice_access_changed")
 
-    return _build_voice_join_request_summary(request, channel, requester, access)
+    return request_summary
 
 
 @router.post("/channels/{channel_id}/participants/{user_id}/kick", response_model=list[VoiceChannelAccessEntry])
@@ -545,6 +562,7 @@ async def kick_voice_participant(
     block_stranger_access(access)
     db.commit()
     await voice_signaling_manager.disconnect_user_sessions(str(channel.id), str(user_id))
+    await publish_server_changed(channel.server_id, reason="voice_access_changed")
     return _load_channel_access_entries(db, channel.id)
 
 
@@ -589,6 +607,7 @@ async def connect_to_voice_channel(websocket: WebSocket, channel_id: UUID) -> No
             nick=current_user.username,
             full_name=current_user.display_name,
         )
+        await publish_server_changed(channel.server_id, reason="voice_presence_changed")
 
     try:
         while True:
@@ -618,6 +637,7 @@ async def connect_to_voice_channel(websocket: WebSocket, channel_id: UUID) -> No
                     participant.id,
                     bool(message.get("muted")),
                 )
+                await publish_server_changed(channel.server_id, reason="voice_presence_changed")
                 continue
 
             if message_type == "ping":
@@ -639,3 +659,4 @@ async def connect_to_voice_channel(websocket: WebSocket, channel_id: UUID) -> No
             if access is not None and access.role == VoiceAccessRole.STRANGER:
                 mark_stranger_rejoin_grace(access)
                 db.commit()
+        await publish_server_changed(channel.server_id, reason="voice_presence_changed")

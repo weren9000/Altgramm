@@ -20,6 +20,11 @@ from app.schemas.workspace import (
     VoiceChannelPresenceSummary,
     VoicePresenceParticipantSummary,
 )
+from app.services.app_events import (
+    publish_server_changed,
+    publish_server_changed_from_sync,
+    publish_servers_changed_from_sync,
+)
 from app.services.site_presence import site_presence_manager
 from app.services.voice_access import (
     can_view_voice_channel,
@@ -213,6 +218,7 @@ def create_server(
     db.add(membership)
     db.commit()
     db.refresh(server)
+    publish_servers_changed_from_sync(reason="server_created")
 
     return _build_server_summary(server, MemberRole.OWNER)
 
@@ -330,6 +336,7 @@ def create_server_channel(
         ensure_voice_channel_owner_permission(db, channel)
     db.commit()
     db.refresh(channel)
+    publish_server_changed_from_sync(server.id, reason="channel_created")
 
     return _build_channel_summary(
         channel,
@@ -353,3 +360,4 @@ async def delete_server_channel(
 
     db.delete(channel)
     db.commit()
+    await publish_server_changed(server_id, reason="channel_deleted")

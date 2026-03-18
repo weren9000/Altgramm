@@ -1,13 +1,27 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.db.models import Server, User
 from app.db.session import SessionLocal
 from app.main import app
+from app.services.site_presence import site_presence_manager
+
+
+@pytest.fixture(autouse=True)
+def reset_site_presence_state() -> None:
+    with site_presence_manager._lock:
+        site_presence_manager._last_seen.clear()
+
+    yield
+
+    with site_presence_manager._lock:
+        site_presence_manager._last_seen.clear()
 
 
 def login_admin_user(client: TestClient) -> str:
@@ -119,6 +133,17 @@ def create_temp_text_channel(client: TestClient, token: str, suffix: str) -> tup
     )
     assert channel_response.status_code == 201
     return group, channel_response.json()
+
+
+@contextmanager
+def connect_app_events_websocket(client: TestClient, token: str):
+    with client.websocket_connect(f"/api/events/ws?token={token}") as websocket:
+        ready_event = websocket.receive_json()
+        assert ready_event["type"] == "ready"
+
+        presence_event = websocket.receive_json()
+        assert presence_event["type"] == "presence_updated"
+        yield websocket
 
 
 def test_admin_login_returns_access_token() -> None:
@@ -323,6 +348,50 @@ def test_servers_and_channels_endpoints_return_seed_workspace() -> None:
     channels = channels_response.json()
     assert any(channel["name"] == "backend" for channel in channels)
     assert any(channel["type"] == "voice" for channel in channels)
+
+
+def test_app_events_websocket_reports_ready_and_activity_presence() -> None:
+    with TestClient(app) as client:
+        token = login_admin_user(client)
+        profile = get_current_user_profile(client, token)
+
+        with connect_app_events_websocket(client, token) as websocket:
+            websocket.send_json({"type": "activity"})
+            presence_event = websocket.receive_json()
+            websocket.send_json({"type": "ping"})
+            pong_event = websocket.receive_json()
+
+    assert presence_event["type"] == "presence_updated"
+    assert presence_event["user_id"] == profile["id"]
+    assert presence_event["is_online"] is True
+    assert pong_event == {"type": "pong"}
+
+
+def test_app_events_websocket_pushes_new_message_to_connected_clients() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        admin_token = login_admin_user(client)
+        regular_token, payload = register_regular_user(client)
+        _, text_channel = get_seed_server_and_text_channel(client, admin_token)
+
+        try:
+            with connect_app_events_websocket(client, regular_token) as websocket:
+                send_message_response = client.post(
+                    f"/api/channels/{text_channel['id']}/messages",
+                    headers={"Authorization": f"Bearer {admin_token}"},
+                    data={"content": f"realtime-{suffix}"},
+                )
+
+                assert send_message_response.status_code == 201
+                pushed_event = websocket.receive_json()
+        finally:
+            delete_user(payload["login"])
+
+    assert pushed_event["type"] == "message_created"
+    assert pushed_event["server_id"] == text_channel["server_id"]
+    assert pushed_event["message"]["channel_id"] == text_channel["id"]
+    assert pushed_event["message"]["content"] == f"realtime-{suffix}"
 
 
 def test_regular_user_can_access_all_groups_channels_and_members() -> None:

@@ -18,6 +18,7 @@ from app.schemas.workspace import (
     MessageAttachmentSummary,
     MessageAuthorSummary,
 )
+from app.services.app_events import publish_message_created
 
 router = APIRouter(tags=["messages"])
 
@@ -185,7 +186,9 @@ async def create_channel_message(
     if created_message is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Сообщение не удалось загрузить")
 
-    return _build_message_summary(created_message)
+    message_summary = _build_message_summary(created_message)
+    await publish_message_created(channel.server_id, message_summary.model_dump(mode="json"))
+    return message_summary
 
 
 @router.get("/attachments/{attachment_id}")
