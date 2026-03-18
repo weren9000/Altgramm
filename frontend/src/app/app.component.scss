@@ -848,6 +848,34 @@ select {
   font-size: 0.8rem;
 }
 
+.voice-dock__actions .voice-mute-button {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 0;
+  color: transparent;
+  position: relative;
+}
+
+.voice-dock__actions .voice-mute-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 18px;
+  height: 18px;
+  background: center / contain no-repeat url('/assets/mic.svg');
+}
+
+.voice-dock__actions .voice-mute-button--off::before {
+  background-image: url('/assets/mic_off.svg');
+}
+
+.voice-dock__actions .voice-mute-button--blocked::before {
+  background-image: url('/assets/mic_block.svg');
+}
+
 .voice-dock__actions .voice-leave-button {
   width: 40px;
   min-width: 40px;
@@ -2255,6 +2283,17 @@ select {
     width: 36px;
     min-width: 36px;
     height: 36px;
+  }
+
+  .voice-dock__actions .voice-mute-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+  }
+
+  .voice-dock__actions .voice-mute-button::before {
+    width: 16px;
+    height: 16px;
   }
 
   .composer {

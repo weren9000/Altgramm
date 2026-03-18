@@ -353,7 +353,7 @@
 
           <div class="voice-dock__actions">
             <button class="secondary-button" type="button" (click)="openConnectedVoiceChannel()">Открыть канал</button>
-            <button class="secondary-button voice-mute-button" type="button" (click)="toggleVoiceMute()" [attr.aria-label]="voiceMuteControlLabel()" [attr.title]="voiceMuteControlLabel()">
+            <button class="secondary-button voice-mute-button" [class.voice-mute-button--blocked]="voiceOwnerMuted()" [class.voice-mute-button--off]="!voiceOwnerMuted() && voiceMuted()" [class.voice-mute-button--on]="!voiceOwnerMuted() && !voiceMuted()" type="button" (click)="toggleVoiceMute()" [attr.aria-label]="voiceMuteControlLabel()" [attr.title]="voiceMuteControlLabel()">
               {{ voiceOwnerMuted() ? 'Микрофон заблокирован' : voiceMuted() ? 'Включить микрофон' : 'Выключить микрофон' }}
             </button>
             <button class="primary-button voice-leave-button" type="button" (click)="leaveVoiceChannel()" aria-label="Выйти из голоса" title="Выйти из голоса">
