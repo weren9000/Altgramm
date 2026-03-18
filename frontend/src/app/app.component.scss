@@ -371,7 +371,6 @@ select {
 .auth-actions,
 .workspace-header__actions,
 .voice-stage__actions,
-.voice-dock__actions,
 .composer__actions,
 .modal__actions {
   display: flex;
@@ -809,19 +808,17 @@ select {
 }
 
 .voice-dock {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
   padding: 8px 10px;
   border-left: 2px solid rgba(61, 214, 198, 0.52);
 }
 
+.voice-dock__top {
+  width: 100%;
+}
+
 .voice-dock__meta {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex: 1 1 auto;
 }
 
 .voice-dock__meta strong {
@@ -835,20 +832,21 @@ select {
   line-height: 1.25;
 }
 
-.voice-dock__actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+.voice-dock__controls {
   margin-left: auto;
 }
 
-.voice-dock__actions > .secondary-button {
+.voice-dock__controls > .secondary-button {
   padding: 8px 10px;
   font-size: 0.8rem;
 }
 
-.voice-dock__actions .voice-mute-button {
+.voice-dock__controls .voice-dock__open-button {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.voice-dock__controls .voice-mute-button {
   width: 40px;
   min-width: 40px;
   height: 40px;
@@ -858,7 +856,7 @@ select {
   position: relative;
 }
 
-.voice-dock__actions .voice-mute-button::before {
+.voice-dock__controls .voice-mute-button::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -868,15 +866,15 @@ select {
   background: center / contain no-repeat url('/assets/mic.svg');
 }
 
-.voice-dock__actions .voice-mute-button--off::before {
+.voice-dock__controls .voice-mute-button--off::before {
   background-image: url('/assets/mic_off.svg');
 }
 
-.voice-dock__actions .voice-mute-button--blocked::before {
+.voice-dock__controls .voice-mute-button--blocked::before {
   background-image: url('/assets/mic_block.svg');
 }
 
-.voice-dock__actions .voice-leave-button {
+.voice-dock__controls .voice-leave-button {
   width: 40px;
   min-width: 40px;
   height: 40px;
@@ -2071,7 +2069,6 @@ select {
 
   .workspace-header,
   .voice-stage__summary,
-  .voice-dock,
   .composer,
   .panel-header {
     flex-direction: column;
@@ -2081,7 +2078,6 @@ select {
   .workspace-header__actions,
   .voice-workspace__join,
   .voice-stage__actions,
-  .voice-dock__actions,
   .composer__actions,
   .modal__actions {
     width: 100%;
@@ -2092,7 +2088,6 @@ select {
   .voice-workspace__join > button,
   .workspace-header__actions > button,
   .voice-stage__actions button,
-  .voice-dock__actions button,
   .composer__actions button {
     width: 100%;
     min-width: 0;
@@ -2147,12 +2142,14 @@ select {
     margin-left: 0;
   }
 
-  .voice-dock {
-    flex-direction: row;
+  .voice-dock__top {
+    display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 10px;
   }
 
-  .voice-dock__actions {
+  .voice-dock__controls {
     width: auto;
     flex-direction: row;
     margin-left: auto;
@@ -2258,43 +2255,43 @@ select {
     height: 16px;
   }
 
-  .voice-dock {
-    gap: 8px;
-  }
+.voice-dock {
+  gap: 8px;
+}
 
-  .voice-dock__meta strong {
+.voice-dock__meta strong {
     font-size: 0.9rem;
   }
 
-  .voice-dock__meta small {
-    font-size: 0.7rem;
-  }
+.voice-dock__meta small {
+  font-size: 0.7rem;
+}
 
-  .voice-dock__actions {
-    gap: 6px;
-  }
+.voice-dock__controls {
+  gap: 6px;
+}
 
-  .voice-dock__actions > .secondary-button {
-    padding: 7px 8px;
-    font-size: 0.74rem;
-  }
+.voice-dock__controls > .secondary-button {
+  padding: 7px 8px;
+  font-size: 0.74rem;
+}
 
-  .voice-dock__actions .voice-leave-button {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-  }
+.voice-dock__controls .voice-leave-button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+}
 
-  .voice-dock__actions .voice-mute-button {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-  }
+.voice-dock__controls .voice-mute-button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+}
 
-  .voice-dock__actions .voice-mute-button::before {
-    width: 16px;
-    height: 16px;
-  }
+.voice-dock__controls .voice-mute-button::before {
+  width: 16px;
+  height: 16px;
+}
 
   .composer {
     gap: 6px;

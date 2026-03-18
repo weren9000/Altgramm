@@ -345,20 +345,43 @@
 
       @if (showVoiceDock()) {
         <section class="voice-dock">
-          <div class="voice-dock__meta">
-            <p class="eyebrow">Голос в фоне</p>
-            <strong>{{ connectedVoiceChannel()?.name }}</strong>
-            <small>{{ voiceDockLabel() }} · участников: {{ voiceParticipants().length }}</small>
-          </div>
+          <div class="voice-workspace__top voice-dock__top">
+            <div class="voice-workspace__meta voice-dock__meta">
+              <p class="eyebrow">Голос в фоне</p>
+              <strong>{{ connectedVoiceChannel()?.name }}</strong>
+              <small>{{ voiceDockLabel() }} · участников: {{ voiceParticipants().length }}</small>
+            </div>
 
-          <div class="voice-dock__actions">
-            <button class="secondary-button" type="button" (click)="openConnectedVoiceChannel()">Открыть канал</button>
-            <button class="secondary-button voice-mute-button" [class.voice-mute-button--blocked]="voiceOwnerMuted()" [class.voice-mute-button--off]="!voiceOwnerMuted() && voiceMuted()" [class.voice-mute-button--on]="!voiceOwnerMuted() && !voiceMuted()" type="button" (click)="toggleVoiceMute()" [attr.aria-label]="voiceMuteControlLabel()" [attr.title]="voiceMuteControlLabel()">
-              {{ voiceOwnerMuted() ? 'Микрофон заблокирован' : voiceMuted() ? 'Включить микрофон' : 'Выключить микрофон' }}
-            </button>
-            <button class="primary-button voice-leave-button" type="button" (click)="leaveVoiceChannel()" aria-label="Выйти из голоса" title="Выйти из голоса">
-              <img src="/assets/Phone outgoing.svg" alt="" />
-            </button>
+            <div class="voice-workspace__controls voice-dock__controls">
+              <button
+                class="secondary-button voice-dock__open-button"
+                type="button"
+                (click)="openConnectedVoiceChannel()"
+              >
+                Открыть канал
+              </button>
+              <button
+                class="secondary-button voice-mute-button"
+                [class.voice-mute-button--blocked]="voiceOwnerMuted()"
+                [class.voice-mute-button--off]="!voiceOwnerMuted() && voiceMuted()"
+                [class.voice-mute-button--on]="!voiceOwnerMuted() && !voiceMuted()"
+                type="button"
+                (click)="toggleVoiceMute()"
+                [attr.aria-label]="voiceMuteControlLabel()"
+                [attr.title]="voiceMuteControlLabel()"
+              >
+                {{ voiceOwnerMuted() ? 'Микрофон заблокирован' : voiceMuted() ? 'Включить микрофон' : 'Выключить микрофон' }}
+              </button>
+              <button
+                class="primary-button voice-leave-button"
+                type="button"
+                (click)="leaveVoiceChannel()"
+                aria-label="Выйти из голоса"
+                title="Выйти из голоса"
+              >
+                <img src="/assets/Phone outgoing.svg" alt="" />
+              </button>
+            </div>
           </div>
         </section>
       }
