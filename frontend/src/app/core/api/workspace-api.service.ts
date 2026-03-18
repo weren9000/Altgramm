@@ -153,6 +153,12 @@ export class WorkspaceApiService {
     });
   }
 
+  deleteChannel(token: string, serverId: string, channelId: string): Observable<void> {
+    return this.http.delete<void>(`${API_BASE_URL}/api/servers/${serverId}/channels/${channelId}`, {
+      headers: this.buildAuthHeaders(token)
+    });
+  }
+
   getMessages(token: string, channelId: string, limit: number, before?: string | null): Observable<WorkspaceMessagePage> {
     let params = new HttpParams().set('limit', limit);
     if (before) {

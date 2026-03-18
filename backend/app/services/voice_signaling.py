@@ -181,5 +181,22 @@ class VoiceSignalingManager:
         for participant_id in participant_ids:
             await self.disconnect(channel_id, participant_id)
 
+    async def disconnect_channel_sessions(
+        self,
+        channel_id: str,
+        *,
+        code: int = 1012,
+        reason: str = "Voice channel removed",
+    ) -> None:
+        async with self._lock:
+            room = self._rooms.pop(channel_id, {})
+            connections = list(room.values())
+
+        for connection in connections:
+            try:
+                await connection.websocket.close(code=code, reason=reason)
+            except Exception:
+                pass
+
 
 voice_signaling_manager = VoiceSignalingManager()

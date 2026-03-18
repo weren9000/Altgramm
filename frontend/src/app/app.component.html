@@ -205,20 +205,34 @@
 
         @if (textChannels().length) {
           @for (channel of textChannels(); track channel.id) {
-            <button
-              class="channel-link"
-              [class.channel-link--active]="channel.id === selectedChannelId()"
-              type="button"
-              (click)="selectChannel(channel)"
-            >
-              <span class="channel-link__prefix">#</span>
-              <div class="channel-link__body">
-                <strong>{{ channel.name }}</strong>
-                @if (channel.topic) {
-                  <small>{{ channel.topic }}</small>
-                }
-              </div>
-            </button>
+            <div class="channel-row">
+              <button
+                class="channel-link"
+                [class.channel-link--active]="channel.id === selectedChannelId()"
+                type="button"
+                (click)="selectChannel(channel)"
+              >
+                <span class="channel-link__prefix">#</span>
+                <div class="channel-link__body">
+                  <strong>{{ channel.name }}</strong>
+                  @if (channel.topic) {
+                    <small>{{ channel.topic }}</small>
+                  }
+                </div>
+              </button>
+
+              @if (canManageActiveGroup()) {
+                <button
+                  class="channel-action"
+                  type="button"
+                  title="Удалить канал"
+                  [disabled]="isDeletingChannel(channel.id)"
+                  (click)="deleteChannel(channel)"
+                >
+                  {{ isDeletingChannel(channel.id) ? '...' : 'x' }}
+                </button>
+              }
+            </div>
           }
         } @else {
           <div class="rail-empty">
@@ -241,6 +255,7 @@
               class="voice-channel-block"
               [class.voice-channel-block--connected]="channel.id === connectedVoiceChannel()?.id"
             >
+              <div class="channel-row">
               <button
                 class="channel-link channel-link--voice"
                 [class.channel-link--active]="channel.id === selectedChannelId()"
@@ -258,6 +273,18 @@
                   }
                 </div>
               </button>
+              @if (canManageActiveGroup()) {
+                <button
+                  class="channel-action"
+                  type="button"
+                  title="Удалить канал"
+                  [disabled]="isDeletingChannel(channel.id)"
+                  (click)="deleteChannel(channel)"
+                >
+                  {{ isDeletingChannel(channel.id) ? '...' : 'x' }}
+                </button>
+              }
+              </div>
 
               @if (voiceParticipantsForChannel(channel.id).length) {
                 <div class="voice-roster">

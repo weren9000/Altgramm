@@ -155,6 +155,7 @@ export class AppComponent {
   readonly messageSubmitting = signal(false);
   readonly createGroupLoading = signal(false);
   readonly createChannelLoading = signal(false);
+  readonly deletingChannelId = signal<string | null>(null);
   readonly authMode = signal<AuthMode>('login');
 
   readonly session = signal<AuthSessionResponse | null>(null);
@@ -779,6 +780,10 @@ export class AppComponent {
     this.createChannelModalOpen.set(false);
   }
 
+  isDeletingChannel(channelId: string): boolean {
+    return this.deletingChannelId() === channelId;
+  }
+
   openMemberVolume(member: GroupMemberItem, voiceChannelId: string | null = null): void {
     this.closeMobilePanel();
     this.selectedMemberUserId.set(member.userId);
@@ -976,6 +981,70 @@ export class AppComponent {
         error: (error) => {
           this.createChannelLoading.set(false);
           this.managementError.set(this.extractErrorMessage(error, 'Не удалось создать канал'));
+        }
+      });
+  }
+
+  deleteChannel(channel: WorkspaceChannel): void {
+    const token = this.session()?.access_token;
+    const activeServer = this.activeServer();
+    if (!token || !activeServer || !this.canManageActiveGroup()) {
+      return;
+    }
+
+    const channelTypeLabel = channel.type === 'voice' ? 'голосовой' : 'текстовый';
+    if (
+      typeof window !== 'undefined'
+      && !window.confirm(`Удалить ${channelTypeLabel} канал «${channel.name}»?`)
+    ) {
+      return;
+    }
+
+    if (this.connectedVoiceChannelId() === channel.id) {
+      this.voiceRoom.leave();
+    }
+
+    if (this.pendingVoiceJoin()?.channelId === channel.id) {
+      this.closePendingVoiceJoin();
+    }
+
+    if (this.selectedVoiceMemberChannelId() === channel.id) {
+      this.closeMemberVolume();
+    }
+
+    this.deletingChannelId.set(channel.id);
+    this.managementError.set(null);
+    this.managementSuccess.set(null);
+
+    this.workspaceApi
+      .deleteChannel(token, activeServer.id, channel.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.deletingChannelId.set(null);
+
+          if (channel.type === 'voice') {
+            this.voicePresence.update((entries) => entries.filter((entry) => entry.channel_id !== channel.id));
+
+            if (this.voiceAdminSelectedChannelId() === channel.id) {
+              this.voiceAdminSelectedChannelId.set(null);
+            }
+
+            if (this.voiceAdminPanelOpen()) {
+              void this.refreshVoiceAdminChannels();
+            }
+          }
+
+          this.managementSuccess.set(
+            channel.type === 'voice'
+              ? `Голосовой канал ${channel.name} удален`
+              : `Текстовый канал #${channel.name} удален`
+          );
+          this.loadServerWorkspace(token, activeServer.id);
+        },
+        error: (error) => {
+          this.deletingChannelId.set(null);
+          this.managementError.set(this.extractErrorMessage(error, 'Не удалось удалить канал'));
         }
       });
   }

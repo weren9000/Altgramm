@@ -558,8 +558,16 @@ select {
   padding-top: 0;
 }
 
+.channel-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
 .channel-link {
-  width: 100%;
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -570,6 +578,29 @@ select {
   text-align: left;
   cursor: pointer;
   transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.channel-action {
+  flex: 0 0 34px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.015);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.channel-action:hover:not(:disabled) {
+  border-color: rgba(255, 107, 107, 0.28);
+  background: rgba(255, 107, 107, 0.08);
+  color: #ffb7b7;
+}
+
+.channel-action:disabled {
+  opacity: 0.56;
+  cursor: default;
 }
 
 .channel-link:hover {

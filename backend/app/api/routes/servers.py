@@ -145,6 +145,14 @@ def _get_accessible_server(db: Session, server_id: UUID, current_user: User) -> 
     return server, _ensure_membership(db, server_id, current_user)
 
 
+def _get_server_channel_or_404(db: Session, server_id: UUID, channel_id: UUID) -> Channel:
+    channel = db.get(Channel, channel_id)
+    if channel is None or channel.server_id != server_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="РљР°РЅР°Р» РЅРµ РЅР°Р№РґРµРЅ")
+
+    return channel
+
+
 def _ensure_manage_permission(membership: ServerMember | None, current_user: User) -> MemberRole:
     if current_user.is_admin:
         return membership.role if membership is not None else MemberRole.ADMIN
@@ -327,3 +335,21 @@ def create_server_channel(
         channel,
         "owner" if channel.type == ChannelType.VOICE else None,
     )
+
+
+@router.delete("/{server_id}/channels/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_server_channel(
+    server_id: UUID,
+    channel_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    _, membership = _get_accessible_server(db, server_id, current_user)
+    _ensure_manage_permission(membership, current_user)
+
+    channel = _get_server_channel_or_404(db, server_id, channel_id)
+    if channel.type == ChannelType.VOICE:
+        await voice_signaling_manager.disconnect_channel_sessions(str(channel.id))
+
+    db.delete(channel)
+    db.commit()

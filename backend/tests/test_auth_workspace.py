@@ -207,6 +207,71 @@ def test_admin_can_create_text_and_voice_channels() -> None:
     assert voice_channel_response.json()["type"] == "voice"
 
 
+def test_admin_can_delete_text_and_voice_channels() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        token = login_admin_user(client)
+        create_group_response = client.post(
+            "/api/servers",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "name": f"Группа удаления {suffix}",
+                "description": "Проверка удаления каналов",
+            },
+        )
+
+        assert create_group_response.status_code == 201
+        group = create_group_response.json()
+
+        try:
+            text_channel_response = client.post(
+                f"/api/servers/{group['id']}/channels",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "name": f"текст-{suffix}",
+                    "topic": "Удаляемый текстовый канал",
+                    "type": "text",
+                },
+            )
+            voice_channel_response = client.post(
+                f"/api/servers/{group['id']}/channels",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "name": f"голос-{suffix}",
+                    "topic": "Удаляемый голосовой канал",
+                    "type": "voice",
+                },
+            )
+            assert text_channel_response.status_code == 201
+            assert voice_channel_response.status_code == 201
+
+            text_channel = text_channel_response.json()
+            voice_channel = voice_channel_response.json()
+
+            delete_text_response = client.delete(
+                f"/api/servers/{group['id']}/channels/{text_channel['id']}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            delete_voice_response = client.delete(
+                f"/api/servers/{group['id']}/channels/{voice_channel['id']}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            channels_response = client.get(
+                f"/api/servers/{group['id']}/channels",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            delete_server(group["id"])
+
+    assert delete_text_response.status_code == 204
+    assert delete_voice_response.status_code == 204
+    assert channels_response.status_code == 200
+    channel_ids = {channel["id"] for channel in channels_response.json()}
+    assert text_channel["id"] not in channel_ids
+    assert voice_channel["id"] not in channel_ids
+
+
 def test_regular_user_cannot_create_group() -> None:
     with TestClient(app) as client:
         token, payload = register_regular_user(client)
@@ -220,6 +285,26 @@ def test_regular_user_cannot_create_group() -> None:
                 },
             )
         finally:
+            delete_user(payload["login"])
+
+    assert response.status_code == 403
+
+
+def test_regular_user_cannot_delete_channel() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        admin_token = login_admin_user(client)
+        token, payload = register_regular_user(client)
+        group, channel = create_temp_text_channel(client, admin_token, suffix)
+
+        try:
+            response = client.delete(
+                f"/api/servers/{group['id']}/channels/{channel['id']}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            delete_server(group["id"])
             delete_user(payload["login"])
 
     assert response.status_code == 403
