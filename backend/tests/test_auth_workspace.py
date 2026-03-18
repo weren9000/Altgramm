@@ -486,6 +486,55 @@ def test_stranger_can_request_voice_access_and_join_after_owner_allows() -> None
             delete_user(payload["login"])
 
 
+def test_kicked_stranger_sees_retry_wait_details() -> None:
+    with TestClient(app) as client:
+        admin_token = login_admin_user(client)
+        token, payload = register_regular_user(client)
+        try:
+            _, voice_channel = get_seed_server_and_voice_channel(client, admin_token)
+            current_user = get_current_user_profile(client, token)
+            assign_response = client.put(
+                f"/api/voice/channels/{voice_channel['id']}/access/{current_user['id']}",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={"role": "stranger"},
+            )
+            assert assign_response.status_code == 200
+
+            request_response = client.post(
+                f"/api/voice/channels/{voice_channel['id']}/requests",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert request_response.status_code == 200
+            request_id = request_response.json()["request"]["id"]
+
+            resolve_response = client.post(
+                f"/api/voice/requests/{request_id}/resolve",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={"action": "allow"},
+            )
+            assert resolve_response.status_code == 200
+
+            kick_response = client.post(
+                f"/api/voice/channels/{voice_channel['id']}/participants/{current_user['id']}/kick",
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert kick_response.status_code == 200
+
+            blocked_response = client.post(
+                f"/api/voice/channels/{voice_channel['id']}/requests",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            delete_user(payload["login"])
+
+    assert blocked_response.status_code == 403
+    detail = blocked_response.json()["detail"]
+    assert detail["blocked_until"] is not None
+    assert isinstance(detail["retry_after_seconds"], int)
+    assert 1 <= detail["retry_after_seconds"] <= 300
+    assert "Повторить попытку можно через" in detail["message"]
+
+
 def test_voice_presence_endpoint_returns_active_voice_participants() -> None:
     with TestClient(app) as client:
         token = login_admin_user(client)

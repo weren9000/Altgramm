@@ -131,10 +131,14 @@ export interface VoiceJoinRequestSummary {
   status: 'pending' | 'allowed' | 'resident' | 'rejected' | 'cancelled';
   created_at: string;
   resolved_at: string | null;
+  blocked_until: string | null;
+  retry_after_seconds: number | null;
 }
 
 export interface VoiceJoinRequestCreateResponse {
   request: VoiceJoinRequestSummary | null;
   can_join_now: boolean;
   detail: string;
+  blocked_until: string | null;
+  retry_after_seconds: number | null;
 }

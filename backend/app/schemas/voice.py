@@ -47,12 +47,16 @@ class VoiceJoinRequestSummary(BaseModel):
     status: Literal["pending", "allowed", "resident", "rejected", "cancelled"]
     created_at: datetime
     resolved_at: datetime | None
+    blocked_until: datetime | None = None
+    retry_after_seconds: int | None = None
 
 
 class VoiceJoinRequestCreateResponse(BaseModel):
     request: VoiceJoinRequestSummary | None
     can_join_now: bool
     detail: str
+    blocked_until: datetime | None = None
+    retry_after_seconds: int | None = None
 
 
 class ResolveVoiceJoinRequest(BaseModel):

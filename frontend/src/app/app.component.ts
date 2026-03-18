@@ -91,6 +91,14 @@ interface PendingVoiceJoinState {
   detail: string;
 }
 
+interface BlockedVoiceJoinState {
+  channelId: string;
+  channelName: string;
+  detail: string;
+  blockedUntil: string | null;
+  retryAfterSeconds: number | null;
+}
+
 const SESSION_STORAGE_KEY = 'tescord.session';
 const MESSAGES_PAGE_SIZE = 25;
 const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
@@ -186,6 +194,7 @@ export class AppComponent {
   readonly voiceAdminSaving = signal(false);
   readonly voiceOwnerActionLoading = signal(false);
   readonly pendingVoiceJoin = signal<PendingVoiceJoinState | null>(null);
+  readonly blockedVoiceJoinNotice = signal<BlockedVoiceJoinState | null>(null);
   readonly ownerVoiceRequests = signal<VoiceJoinRequestSummary[]>([]);
   readonly activeOwnerRequestId = signal<string | null>(null);
   readonly ownerVoiceRequestModalOpen = signal(false);
@@ -1314,6 +1323,10 @@ export class AppComponent {
     this.stopVoiceJoinRequestPolling();
   }
 
+  closeBlockedVoiceJoinNotice(): void {
+    this.blockedVoiceJoinNotice.set(null);
+  }
+
   closeActiveOwnerRequest(): void {
     this.ownerVoiceRequestModalOpen.set(false);
     this.activeOwnerRequestId.set(null);
@@ -1379,6 +1392,7 @@ export class AppComponent {
     this.selectedVoiceMemberChannelId.set(null);
     this.mobilePanel.set(null);
     this.pendingVoiceJoin.set(null);
+    this.blockedVoiceJoinNotice.set(null);
     this.ownerVoiceRequests.set([]);
     this.activeOwnerRequestId.set(null);
     this.ownerVoiceRequestModalOpen.set(false);
@@ -1411,6 +1425,7 @@ export class AppComponent {
     this.stopVoicePresencePolling();
     this.stopMessageAutoRefreshPolling();
     this.closePendingVoiceJoin();
+    this.closeBlockedVoiceJoinNotice();
     if (this.hasVoiceConnection()) {
       this.voiceRoom.leave();
     }
@@ -1813,8 +1828,17 @@ export class AppComponent {
             return;
           }
 
-          this.pendingVoiceJoin.set(null);
-          this.workspaceError.set('Владелец канала отклонил вход. Повторить попытку можно через 5 минут.');
+          this.openBlockedVoiceJoinNotice(
+            request.channel_id,
+            request.channel_name,
+            this.buildBlockedVoiceJoinMessage(
+              request.retry_after_seconds,
+              request.blocked_until,
+              'Владелец канала отклонил вход.'
+            ),
+            request.retry_after_seconds,
+            request.blocked_until
+          );
         },
         error: () => {
           this.stopVoiceJoinRequestPolling();
@@ -2137,6 +2161,7 @@ export class AppComponent {
     }
 
     this.workspaceError.set(null);
+    this.closeBlockedVoiceJoinNotice();
 
     this.workspaceApi
       .requestVoiceJoin(token, channel.id)
@@ -2163,6 +2188,18 @@ export class AppComponent {
           this.startVoiceJoinRequestPolling();
         },
         error: (error) => {
+          const blockedNotice = this.extractBlockedVoiceJoinNotice(error);
+          if (blockedNotice) {
+            this.openBlockedVoiceJoinNotice(
+              channel.id,
+              channel.name,
+              blockedNotice.message,
+              blockedNotice.retryAfterSeconds,
+              blockedNotice.blockedUntil
+            );
+            return;
+          }
+
           this.workspaceError.set(this.extractErrorMessage(error, 'Не удалось отправить запрос владельцу канала'));
         }
       });
@@ -2176,6 +2213,7 @@ export class AppComponent {
     }
 
     this.workspaceError.set(null);
+    this.closeBlockedVoiceJoinNotice();
     await this.voiceRoom.join(channel.id, token, currentUser);
     this.pendingVoiceJoin.set(null);
     this.stopVoiceJoinRequestPolling();
@@ -2486,9 +2524,100 @@ export class AppComponent {
       if (typeof detail === 'string' && detail.trim()) {
         return detail;
       }
+
+      if (typeof detail === 'object' && detail !== null) {
+        const message = (detail as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim()) {
+          return message;
+        }
+      }
     }
 
     return fallback;
+  }
+
+  private openBlockedVoiceJoinNotice(
+    channelId: string,
+    channelName: string,
+    detail: string,
+    retryAfterSeconds: number | null,
+    blockedUntil: string | null
+  ): void {
+    this.pendingVoiceJoin.set(null);
+    this.stopVoiceJoinRequestPolling();
+    this.workspaceError.set(null);
+    this.blockedVoiceJoinNotice.set({
+      channelId,
+      channelName,
+      detail,
+      retryAfterSeconds,
+      blockedUntil
+    });
+  }
+
+  private extractBlockedVoiceJoinNotice(error: unknown): {
+    message: string;
+    retryAfterSeconds: number | null;
+    blockedUntil: string | null;
+  } | null {
+    if (!(error instanceof HttpErrorResponse) || typeof error.error !== 'object' || error.error === null) {
+      return null;
+    }
+
+    const detail = (error.error as { detail?: unknown }).detail;
+    if (typeof detail !== 'object' || detail === null) {
+      return null;
+    }
+
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message !== 'string' || !message.trim()) {
+      return null;
+    }
+
+    const retryAfterSecondsValue = (detail as { retry_after_seconds?: unknown }).retry_after_seconds;
+    const blockedUntilValue = (detail as { blocked_until?: unknown }).blocked_until;
+
+    return {
+      message,
+      retryAfterSeconds: typeof retryAfterSecondsValue === 'number' ? retryAfterSecondsValue : null,
+      blockedUntil: typeof blockedUntilValue === 'string' ? blockedUntilValue : null
+    };
+  }
+
+  private buildBlockedVoiceJoinMessage(
+    retryAfterSeconds: number | null,
+    blockedUntil: string | null,
+    fallback: string
+  ): string {
+    if (typeof retryAfterSeconds === 'number' && retryAfterSeconds >= 0) {
+      return `${fallback} Повторить попытку можно через ${this.formatRetryWait(retryAfterSeconds)}.`;
+    }
+
+    if (blockedUntil) {
+      const blockedUntilDate = new Date(blockedUntil);
+      if (!Number.isNaN(blockedUntilDate.getTime())) {
+        const seconds = Math.max(0, Math.ceil((blockedUntilDate.getTime() - Date.now()) / 1000));
+        return `${fallback} Повторить попытку можно через ${this.formatRetryWait(seconds)}.`;
+      }
+    }
+
+    return fallback;
+  }
+
+  private formatRetryWait(totalSeconds: number): string {
+    const normalizedSeconds = Math.max(0, Math.ceil(totalSeconds));
+    const minutes = Math.floor(normalizedSeconds / 60);
+    const seconds = normalizedSeconds % 60;
+
+    if (minutes > 0 && seconds > 0) {
+      return `${minutes} мин ${seconds} сек`;
+    }
+
+    if (minutes > 0) {
+      return `${minutes} мин`;
+    }
+
+    return `${seconds} сек`;
   }
 
   private buildServerLabel(name: string): string {

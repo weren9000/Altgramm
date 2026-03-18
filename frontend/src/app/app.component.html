@@ -695,6 +695,29 @@
   </div>
 }
 
+@if (blockedVoiceJoinNotice(); as blockedNotice) {
+  <div class="modal-backdrop">
+    <section class="modal modal--compact" (click)="$event.stopPropagation()">
+      <div class="modal__header">
+        <div>
+          <p class="eyebrow">Голосовой канал</p>
+          <h3>{{ blockedNotice.channelName }}</h3>
+        </div>
+        <button class="icon-button" type="button" (click)="closeBlockedVoiceJoinNotice()">✕</button>
+      </div>
+
+      <div class="modal__body">
+        <p class="modal-note">Вход временно недоступен.</p>
+        <p class="modal-note">{{ blockedNotice.detail }}</p>
+      </div>
+
+      <div class="modal__actions">
+        <button class="primary-button" type="button" (click)="closeBlockedVoiceJoinNotice()">Ок</button>
+      </div>
+    </section>
+  </div>
+}
+
 @if (activeOwnerRequest(); as activeRequest) {
   <div class="modal-backdrop" (click)="closeActiveOwnerRequest()">
     <section class="modal modal--compact" (click)="$event.stopPropagation()">

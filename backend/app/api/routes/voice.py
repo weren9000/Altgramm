@@ -47,6 +47,30 @@ from app.services.voice_signaling import voice_signaling_manager
 router = APIRouter(prefix="/voice", tags=["voice"])
 
 
+def _seconds_until(value, *, now=None) -> int:
+    current_time = now or utc_now()
+    remaining_seconds = int((value - current_time).total_seconds())
+    return max(0, remaining_seconds)
+
+
+def _format_retry_wait(seconds: int) -> str:
+    minutes, remainder = divmod(max(0, seconds), 60)
+    if minutes and remainder:
+        return f"{minutes} мин {remainder} сек"
+    if minutes:
+        return f"{minutes} мин"
+    return f"{remainder} сек"
+
+
+def _build_blocked_voice_detail(*, blocked_until, now=None) -> dict[str, object]:
+    retry_after_seconds = _seconds_until(blocked_until, now=now)
+    return {
+        "message": f"Повторить попытку можно через {_format_retry_wait(retry_after_seconds)}.",
+        "blocked_until": blocked_until.isoformat(),
+        "retry_after_seconds": retry_after_seconds,
+    }
+
+
 def _get_voice_channel_or_404(db: Session, channel_id: UUID) -> Channel:
     channel = db.get(Channel, channel_id)
     if channel is None or channel.type != ChannelType.VOICE:
@@ -120,7 +144,14 @@ def _build_voice_join_request_summary(
     request: VoiceJoinRequest,
     channel: Channel,
     requester: User,
+    access: VoiceChannelAccess | None = None,
 ) -> VoiceJoinRequestSummary:
+    blocked_until = None
+    retry_after_seconds = None
+    if access is not None and access.role == VoiceAccessRole.STRANGER and is_voice_access_blocked(access):
+        blocked_until = access.blocked_until
+        retry_after_seconds = _seconds_until(access.blocked_until)
+
     return VoiceJoinRequestSummary(
         id=request.id,
         channel_id=channel.id,
@@ -131,6 +162,8 @@ def _build_voice_join_request_summary(
         status=request.status.value,
         created_at=request.created_at,
         resolved_at=request.resolved_at,
+        blocked_until=blocked_until,
+        retry_after_seconds=retry_after_seconds,
     )
 
 
@@ -340,12 +373,14 @@ def create_voice_join_request(
             request=None,
             can_join_now=True,
             detail="Можно входить в канал без ожидания ответа владельца",
+            blocked_until=None,
+            retry_after_seconds=None,
         )
 
     if gate.blocked_until is not None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Владелец канала временно запретил вход. Повторите попытку позже.",
+            detail=_build_blocked_voice_detail(blocked_until=gate.blocked_until),
         )
 
     owner_access = get_voice_channel_owner_access(db, channel.id)
@@ -370,6 +405,8 @@ def create_voice_join_request(
             request=_build_voice_join_request_summary(existing_request, channel, current_user),
             can_join_now=False,
             detail="Запрос уже отправлен владельцу канала",
+            blocked_until=None,
+            retry_after_seconds=None,
         )
 
     request = VoiceJoinRequest(
@@ -385,6 +422,8 @@ def create_voice_join_request(
         request=_build_voice_join_request_summary(request, channel, current_user),
         can_join_now=False,
         detail="Ожидайте ответа владельца",
+        blocked_until=None,
+        retry_after_seconds=None,
     )
 
 
@@ -439,7 +478,8 @@ def get_voice_join_request(
     ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="У вас нет доступа к этому запросу")
 
-    return _build_voice_join_request_summary(request, channel, requester)
+    access = get_voice_channel_access(db, channel.id, requester.id)
+    return _build_voice_join_request_summary(request, channel, requester, access)
 
 
 @router.post("/requests/{request_id}/resolve", response_model=VoiceJoinRequestSummary)
@@ -453,7 +493,7 @@ async def resolve_voice_join_request(
     _ensure_voice_channel_manager(db, channel, current_user)
 
     if request.status != VoiceJoinRequestStatus.PENDING:
-        return _build_voice_join_request_summary(request, channel, requester)
+        return _build_voice_join_request_summary(request, channel, requester, get_voice_channel_access(db, channel.id, requester.id))
 
     access = get_voice_channel_access(db, channel.id, requester.id)
     if access is None:
@@ -485,7 +525,7 @@ async def resolve_voice_join_request(
     db.commit()
     db.refresh(request)
 
-    return _build_voice_join_request_summary(request, channel, requester)
+    return _build_voice_join_request_summary(request, channel, requester, access)
 
 
 @router.post("/channels/{channel_id}/participants/{user_id}/kick", response_model=list[VoiceChannelAccessEntry])
