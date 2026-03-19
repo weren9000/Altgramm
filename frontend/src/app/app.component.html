@@ -521,15 +521,24 @@
                         @if (message.attachments.length) {
                           <div class="message-attachments">
                             @for (attachment of message.attachments; track attachment.id) {
-                              @if (isInlineImageAttachment(attachment) && imagePreviewUrl(attachment); as previewUrl) {
-                                <button
-                                  class="attachment-preview"
-                                  type="button"
-                                  (click)="openImageAttachment(attachment)"
-                                >
-                                  <img [src]="previewUrl" [alt]="attachment.filename" loading="lazy" />
-                                  <span>{{ attachment.filename }}</span>
-                                </button>
+                              @if (isInlineImageAttachment(attachment)) {
+                                @if (imagePreviewUrl(attachment); as previewUrl) {
+                                  <button
+                                    class="attachment-preview"
+                                    type="button"
+                                    (click)="openImageAttachment(attachment)"
+                                  >
+                                    <img [src]="previewUrl" [alt]="attachment.filename" loading="lazy" />
+                                    <span>{{ attachment.filename }}</span>
+                                  </button>
+                                } @else {
+                                  <button class="attachment-chip" type="button" [disabled]="isAttachmentPreviewLoading(attachment)" (click)="openImageAttachment(attachment)">
+                                    <strong>{{ attachment.filename }}</strong>
+                                    <small>
+                                      {{ isAttachmentPreviewLoading(attachment) ? 'Загружаем изображение...' : 'Показать · ' + formatFileSize(attachment.size_bytes) }}
+                                    </small>
+                                  </button>
+                                }
                               } @else if (isInlineAudioAttachment(attachment)) {
                                 @if (audioPreviewUrl(attachment); as audioUrl) {
                                   <div class="audio-attachment">
@@ -537,12 +546,14 @@
                                       <strong>{{ attachment.filename }}</strong>
                                       <small>{{ formatFileSize(attachment.size_bytes) }}</small>
                                     </div>
-                                    <audio [src]="audioUrl" controls preload="metadata"></audio>
+                                    <audio [src]="audioUrl" controls preload="none"></audio>
                                   </div>
                                 } @else {
-                                  <button class="attachment-chip" type="button" (click)="downloadAttachment(attachment)">
+                                  <button class="attachment-chip" type="button" [disabled]="isAttachmentPreviewLoading(attachment)" (click)="loadAudioAttachment(attachment)">
                                     <strong>{{ attachment.filename }}</strong>
-                                    <small>{{ formatFileSize(attachment.size_bytes) }}</small>
+                                    <small>
+                                      {{ isAttachmentPreviewLoading(attachment) ? 'Загружаем аудио...' : 'Прослушать · ' + formatFileSize(attachment.size_bytes) }}
+                                    </small>
                                   </button>
                                 }
                               } @else {

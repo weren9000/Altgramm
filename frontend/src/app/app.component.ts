@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { EMPTY, Subject, catchError, exhaustMap, finalize, forkJoin, tap } from 'rxjs';
+import { EMPTY, Subject, catchError, exhaustMap, finalize, forkJoin, mergeMap, tap } from 'rxjs';
 
 import { AuthApiService } from './core/api/auth-api.service';
 import { SystemApiService } from './core/api/system-api.service';
@@ -154,6 +154,12 @@ interface DownloadAttachmentTrigger {
   attachment: WorkspaceMessageAttachment;
 }
 
+interface LoadAttachmentPreviewTrigger {
+  token: string;
+  attachment: WorkspaceMessageAttachment;
+  openImageAfterLoad?: boolean;
+}
+
 interface VoiceMemberRoleTrigger {
   token: string;
   channelId: string;
@@ -188,6 +194,7 @@ interface VoiceJoinRequestTrigger {
 const SESSION_STORAGE_KEY = 'tescord.session';
 const MESSAGES_PAGE_SIZE = 25;
 const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
+const MAX_INLINE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const PRESENCE_ACTIVITY_THROTTLE_MS = 30000;
 const PRESENCE_KEEPALIVE_INTERVAL_MS = 45000;
 
@@ -228,6 +235,7 @@ export class AppComponent {
   private readonly deleteChannelTrigger$ = new Subject<DeleteChannelTrigger>();
   private readonly sendMessageTrigger$ = new Subject<SendMessageTrigger>();
   private readonly downloadAttachmentTrigger$ = new Subject<DownloadAttachmentTrigger>();
+  private readonly loadAttachmentPreviewTrigger$ = new Subject<LoadAttachmentPreviewTrigger>();
   private readonly voiceMemberRoleTrigger$ = new Subject<VoiceMemberRoleTrigger>();
   private readonly kickVoiceMemberTrigger$ = new Subject<KickVoiceMemberTrigger>();
   private readonly voiceMemberOwnerMuteTrigger$ = new Subject<VoiceMemberOwnerMuteTrigger>();
@@ -1011,7 +1019,6 @@ export class AppComponent {
               }
 
               this.messages.update((messages) => this.mergeMessagesChronologically([...messages, message]));
-              this.primeAttachmentPreviews([message]);
               this.scrollMessagesToBottom();
             }),
             catchError((error) => {
@@ -1042,6 +1049,47 @@ export class AppComponent {
             catchError((error) => {
               this.messageError.set(this.extractErrorMessage(error, 'Не удалось скачать файл'));
               return EMPTY;
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.loadAttachmentPreviewTrigger$
+      .pipe(
+        mergeMap(({ token, attachment, openImageAfterLoad }) =>
+          this.workspaceApi.downloadAttachment(token, attachment.id).pipe(
+            tap((blob) => {
+              const objectUrl = URL.createObjectURL(blob);
+              const attachmentStillVisible = this.messages().some((message) =>
+                message.attachments.some((messageAttachment) => messageAttachment.id === attachment.id)
+              );
+              if (!attachmentStillVisible) {
+                URL.revokeObjectURL(objectUrl);
+                return;
+              }
+
+              const previousUrl = this.attachmentPreviewUrls()[attachment.id];
+              if (previousUrl) {
+                URL.revokeObjectURL(previousUrl);
+              }
+
+              this.attachmentPreviewUrls.update((currentUrls) => ({
+                ...currentUrls,
+                [attachment.id]: objectUrl
+              }));
+
+              if (openImageAfterLoad) {
+                this.openedImageAttachmentId.set(attachment.id);
+              }
+            }),
+            catchError((error) => {
+              this.messageError.set(this.extractErrorMessage(error, 'Не удалось загрузить вложение'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.loadingAttachmentPreviewIds.delete(attachment.id);
             })
           )
         ),
@@ -1893,7 +1941,15 @@ export class AppComponent {
     return this.attachmentPreviewUrl(attachment);
   }
 
+  isAttachmentPreviewLoading(attachment: WorkspaceMessageAttachment): boolean {
+    return this.loadingAttachmentPreviewIds.has(attachment.id);
+  }
+
   isInlineImageAttachment(attachment: WorkspaceMessageAttachment): boolean {
+    if (attachment.size_bytes > MAX_INLINE_IMAGE_SIZE_BYTES) {
+      return false;
+    }
+
     const mimeType = attachment.mime_type.toLowerCase();
     if (mimeType === 'image/png' || mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
       return true;
@@ -1924,7 +1980,11 @@ export class AppComponent {
       return;
     }
 
-    this.downloadAttachment(attachment);
+    this.requestAttachmentPreview(attachment, { openImageAfterLoad: true });
+  }
+
+  loadAudioAttachment(attachment: WorkspaceMessageAttachment): void {
+    this.requestAttachmentPreview(attachment);
   }
 
   closeImageAttachment(): void {
@@ -2405,7 +2465,6 @@ export class AppComponent {
       !listElement || listElement.scrollHeight - listElement.scrollTop - listElement.clientHeight <= 80;
 
     this.messages.update((messages) => this.mergeMessagesChronologically([...messages, event.message]));
-    this.primeAttachmentPreviews([event.message]);
 
     if (isNearBottom || event.message.author.id === this.currentUser()?.id) {
       this.scrollMessagesToBottom();
@@ -2896,7 +2955,6 @@ export class AppComponent {
           } else {
             this.messages.set(page.items);
           }
-          this.primeAttachmentPreviews(page.items);
 
           this.messagesHasMore.set(page.has_more);
           this.messagesCursor.set(page.next_before);
@@ -2933,6 +2991,37 @@ export class AppComponent {
     }
 
     this.loadMessagesForChannel(token, activeChannel.id, this.messagesCursor());
+  }
+
+  private requestAttachmentPreview(
+    attachment: WorkspaceMessageAttachment,
+    options?: { openImageAfterLoad?: boolean }
+  ): void {
+    const token = this.session()?.access_token;
+    if (!token) {
+      return;
+    }
+
+    if (this.attachmentPreviewUrl(attachment)) {
+      if (options?.openImageAfterLoad) {
+        this.openedImageAttachmentId.set(
+          this.openedImageAttachmentId() === attachment.id ? null : attachment.id
+        );
+      }
+      return;
+    }
+
+    if (this.loadingAttachmentPreviewIds.has(attachment.id)) {
+      return;
+    }
+
+    this.messageError.set(null);
+    this.loadingAttachmentPreviewIds.add(attachment.id);
+    this.loadAttachmentPreviewTrigger$.next({
+      token,
+      attachment,
+      openImageAfterLoad: options?.openImageAfterLoad === true
+    });
   }
 
   private syncMessageAutoRefreshPolling(): void {
@@ -2976,7 +3065,6 @@ export class AppComponent {
           const existingMessages = this.messages();
           if (!existingMessages.length) {
             this.messages.set(page.items);
-            this.primeAttachmentPreviews(page.items);
             if (isNearBottom) {
               this.scrollMessagesToBottom();
             }
@@ -2990,7 +3078,6 @@ export class AppComponent {
           }
 
           this.messages.set(this.mergeMessagesChronologically([...existingMessages, ...page.items]));
-          this.primeAttachmentPreviews(newItems);
 
           if (isNearBottom) {
             this.scrollMessagesToBottom();
@@ -3062,51 +3149,6 @@ export class AppComponent {
 
       element.scrollTop = element.scrollHeight - previousScrollHeight + previousScrollTop;
     });
-  }
-
-  private primeAttachmentPreviews(messages: WorkspaceMessage[]): void {
-    const token = this.session()?.access_token;
-    if (!token) {
-      return;
-    }
-
-    for (const message of messages) {
-      for (const attachment of message.attachments) {
-        if (!this.isInlineImageAttachment(attachment) && !this.isInlineAudioAttachment(attachment)) {
-          continue;
-        }
-
-        if (this.attachmentPreviewUrls()[attachment.id] || this.loadingAttachmentPreviewIds.has(attachment.id)) {
-          continue;
-        }
-
-        this.loadingAttachmentPreviewIds.add(attachment.id);
-        this.workspaceApi
-          .downloadAttachment(token, attachment.id)
-          .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe({
-            next: (blob) => {
-              this.loadingAttachmentPreviewIds.delete(attachment.id);
-              const objectUrl = URL.createObjectURL(blob);
-              const attachmentStillVisible = this.messages().some((message) =>
-                message.attachments.some((messageAttachment) => messageAttachment.id === attachment.id)
-              );
-              if (!attachmentStillVisible) {
-                URL.revokeObjectURL(objectUrl);
-                return;
-              }
-
-              this.attachmentPreviewUrls.update((currentUrls) => ({
-                ...currentUrls,
-                [attachment.id]: objectUrl
-              }));
-            },
-            error: () => {
-              this.loadingAttachmentPreviewIds.delete(attachment.id);
-            }
-          });
-      }
-    }
   }
 
   private clearAttachmentPreviews(): void {
