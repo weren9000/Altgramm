@@ -125,7 +125,10 @@ class Channel(TimestampMixin, Base):
 
 class ServerMember(Base):
     __tablename__ = "server_members"
-    __table_args__ = (UniqueConstraint("server_id", "user_id", name="uq_server_members_server_user"),)
+    __table_args__ = (
+        UniqueConstraint("server_id", "user_id", name="uq_server_members_server_user"),
+        Index("ix_server_members_user_id", "user_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     server_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
@@ -164,6 +167,7 @@ class Message(TimestampMixin, Base):
 
 class Attachment(Base):
     __tablename__ = "attachments"
+    __table_args__ = (Index("ix_attachments_message_id", "message_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
