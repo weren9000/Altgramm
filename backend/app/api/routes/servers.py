@@ -17,6 +17,7 @@ from app.schemas.workspace import (
     CreateServerRequest,
     ServerMemberSummary,
     ServerSummary,
+    UpdateServerIconRequest,
     VoiceChannelPresenceSummary,
     VoicePresenceParticipantSummary,
 )
@@ -27,6 +28,7 @@ from app.services.app_events import (
     publish_servers_changed_from_sync,
 )
 from app.services.default_tavern import ensure_default_tavern_access_for_users, ensure_default_tavern_channel, is_default_tavern_channel
+from app.services.server_icons import get_default_server_icon_asset, normalize_server_icon_asset
 from app.services.site_presence import site_presence_manager
 from app.services.voice_access import (
     can_view_voice_channel,
@@ -49,6 +51,7 @@ def _build_server_summary(server: Server, role: MemberRole) -> ServerSummary:
         name=server.name,
         slug=server.slug,
         description=server.description,
+        icon_asset=server.icon_asset,
         member_role=role.value,
     )
 
@@ -208,6 +211,7 @@ def create_server(
         name=name,
         slug=slug,
         description=description,
+        icon_asset=get_default_server_icon_asset(name),
         owner_id=current_user.id,
     )
     db.add(server)
@@ -228,6 +232,27 @@ def create_server(
     publish_servers_changed_from_sync(reason="server_created")
 
     return _build_server_summary(server, MemberRole.OWNER)
+
+
+@router.patch("/{server_id}/icon", response_model=ServerSummary)
+def update_server_icon(
+    server_id: UUID,
+    payload: UpdateServerIconRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ServerSummary:
+    server, membership = _get_accessible_server(db, server_id, current_user)
+    role = _ensure_manage_permission(membership, current_user)
+
+    try:
+        server.icon_asset = normalize_server_icon_asset(payload.icon_asset)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+    db.commit()
+    db.refresh(server)
+    publish_servers_changed_from_sync(reason="server_icon_updated")
+    return _build_server_summary(server, role)
 
 
 @router.get("/{server_id}/channels", response_model=list[ChannelSummary])

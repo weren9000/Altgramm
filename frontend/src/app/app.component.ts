@@ -75,7 +75,14 @@ interface ServerShortcut {
   id: string;
   label: string;
   name: string;
+  iconUrl: string | null;
   active: boolean;
+}
+
+interface ServerIconOption {
+  asset: string;
+  label: string;
+  url: string;
 }
 
 interface GroupMemberItem {
@@ -197,12 +204,66 @@ interface PendingServerSwitchState {
   toServerName: string;
 }
 
+interface UpdateServerIconTrigger {
+  token: string;
+  serverId: string;
+  iconAsset: string;
+  iconLabel: string;
+}
+
 const SESSION_STORAGE_KEY = 'tescord.session';
 const MESSAGES_PAGE_SIZE = 25;
 const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
 const MAX_INLINE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const PRESENCE_ACTIVITY_THROTTLE_MS = 30000;
 const PRESENCE_KEEPALIVE_INTERVAL_MS = 45000;
+const SERVER_ICON_DIRECTORY = '/assets/Иконки групп';
+const SERVER_ICON_ASSETS = [
+  'Общая.png',
+  'Ан-Зайлиль.png',
+  'Валенвуд.png',
+  'Венценосные.png',
+  'Дом Даггерфорльский.png',
+  'Дом Каменный кулак.png',
+  'Дом Меркатто.png',
+  'Дом Редоран.png',
+  'Дом Тельванни.png',
+  'Дом Титус.png',
+  'Дом Фроуд.png',
+  'Дракон.png',
+  'Империя.png',
+  'Клан Диренни.png',
+  'Матиссен.png',
+  'Некроманты.png',
+  'Орден Араксии.png',
+  'Орден Вирвека.png',
+  'Орден Красной горы.png',
+  'Орден Мелора.png',
+  'Орден Талора.png',
+  'Предшественники.png',
+  'Разбойники.png',
+  'Саммерсет.png',
+  'Северное племя.png',
+  'Скайрим.png',
+  'Хай Рок.png',
+  'Хаммерфелл.png',
+  'Хист.png',
+  'Чернотопье.png',
+  'Эльсвеер.png',
+  'Южное племя.png'
+] as const;
+const DEFAULT_SERVER_ICON_ASSET_BY_NAME: Record<string, string> = {
+  'Общая': 'Общая.png',
+  'Империя': 'Империя.png',
+  'Саммерсет': 'Саммерсет.png',
+  'Хай Рок': 'Хай Рок.png',
+  'Валенвуд': 'Валенвуд.png',
+  'Хаммерфелл': 'Хаммерфелл.png',
+  'Скайрим': 'Скайрим.png',
+  'Тельваннис': 'Дом Тельванни.png',
+  'Солтсхейм': 'Дракон.png',
+  'Эльсвеер': 'Эльсвеер.png'
+};
 
 @Component({
   selector: 'app-root',
@@ -247,6 +308,7 @@ export class AppComponent {
   private readonly voiceMemberOwnerMuteTrigger$ = new Subject<VoiceMemberOwnerMuteTrigger>();
   private readonly resolveVoiceRequestTrigger$ = new Subject<ResolveVoiceRequestTrigger>();
   private readonly voiceJoinRequestTrigger$ = new Subject<VoiceJoinRequestTrigger>();
+  private readonly updateServerIconTrigger$ = new Subject<UpdateServerIconTrigger>();
 
   @ViewChild('messageList')
   private messageListRef?: ElementRef<HTMLElement>;
@@ -289,6 +351,7 @@ export class AppComponent {
   readonly voiceAdminPanelOpen = signal(false);
   readonly createGroupModalOpen = signal(false);
   readonly createChannelModalOpen = signal(false);
+  readonly serverIconModalOpen = signal(false);
   readonly selectedMemberUserId = signal<string | null>(null);
   readonly selectedVoiceMemberChannelId = signal<string | null>(null);
   readonly openedImageAttachmentId = signal<string | null>(null);
@@ -301,6 +364,7 @@ export class AppComponent {
   readonly voiceAdminAccessLoading = signal(false);
   readonly voiceAdminSaving = signal(false);
   readonly voiceOwnerActionLoading = signal(false);
+  readonly serverIconSaving = signal(false);
   readonly pendingVoiceJoin = signal<PendingVoiceJoinState | null>(null);
   readonly blockedVoiceJoinNotice = signal<BlockedVoiceJoinState | null>(null);
   readonly ownerVoiceRequests = signal<VoiceJoinRequestSummary[]>([]);
@@ -311,6 +375,11 @@ export class AppComponent {
   readonly voiceAdminSelectedChannelId = signal<string | null>(null);
   readonly voiceAccessEntriesByChannelId = signal<Record<string, VoiceChannelAccessEntry[]>>({});
   readonly pendingServerSwitch = signal<PendingServerSwitchState | null>(null);
+  readonly serverIconOptions: ServerIconOption[] = SERVER_ICON_ASSETS.map((asset) => ({
+    asset,
+    label: asset.replace(/\.png$/i, ''),
+    url: this.buildServerIconAssetUrl(asset)
+  }));
 
   readonly loginForm: LoginFormModel = {
     login: '',
@@ -439,6 +508,16 @@ export class AppComponent {
     }
 
     return currentUser.is_admin || activeServer.member_role === 'owner' || activeServer.member_role === 'admin';
+  });
+
+  readonly canEditActiveServerIcon = computed(() => this.canManageActiveGroup() && !this.isCompactVoiceWorkspaceViewport());
+  readonly activeServerIconAsset = computed(() => {
+    const activeServer = this.activeServer();
+    if (!activeServer) {
+      return null;
+    }
+
+    return this.resolveServerIconAsset(activeServer);
   });
 
   readonly statusTone = computed(() => {
@@ -577,6 +656,7 @@ export class AppComponent {
       id: server.id,
       label: this.buildServerLabel(server.name),
       name: server.name,
+      iconUrl: this.serverIconUrl(server),
       active: server.id === this.selectedServerId()
     }))
   );
@@ -852,6 +932,7 @@ export class AppComponent {
     this.bindMessagePipelines();
     this.bindVoiceOwnershipPipelines();
     this.bindVoiceJoinRequestPipeline();
+    this.bindServerIconPipeline();
   }
 
   private bindAuthPipelines(): void {
@@ -1260,6 +1341,34 @@ export class AppComponent {
       .subscribe();
   }
 
+  private bindServerIconPipeline(): void {
+    this.updateServerIconTrigger$
+      .pipe(
+        exhaustMap(({ token, serverId, iconAsset, iconLabel }) =>
+          this.workspaceApi.updateServerIcon(token, serverId, iconAsset).pipe(
+            tap((updatedServer) => {
+              this.servers.update((servers) =>
+                servers
+                  .map((server) => (server.id === updatedServer.id ? updatedServer : server))
+                  .sort((left, right) => left.name.localeCompare(right.name, 'ru'))
+              );
+              this.managementSuccess.set(`Иконка группы «${updatedServer.name}» обновлена: ${iconLabel}`);
+              this.serverIconModalOpen.set(false);
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, 'Не удалось обновить иконку группы'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.serverIconSaving.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+  }
+
   switchAuthMode(mode: AuthMode): void {
     this.authMode.set(mode);
     this.authError.set(null);
@@ -1355,6 +1464,44 @@ export class AppComponent {
 
   closeCreateChannelModal(): void {
     this.createChannelModalOpen.set(false);
+  }
+
+  openServerIconModal(): void {
+    if (!this.canManageActiveGroup() || this.isCompactVoiceWorkspaceViewport() || !this.activeServer()) {
+      return;
+    }
+
+    this.serverIconModalOpen.set(true);
+    this.managementError.set(null);
+    this.managementSuccess.set(null);
+  }
+
+  closeServerIconModal(): void {
+    this.serverIconModalOpen.set(false);
+  }
+
+  selectServerIcon(iconAsset: string): void {
+    const token = this.session()?.access_token;
+    const activeServer = this.activeServer();
+    if (!token || !activeServer || this.serverIconSaving()) {
+      return;
+    }
+
+    if (this.resolveServerIconAsset(activeServer) === iconAsset) {
+      this.serverIconModalOpen.set(false);
+      return;
+    }
+
+    const iconLabel = iconAsset.replace(/\.png$/i, '');
+    this.serverIconSaving.set(true);
+    this.managementError.set(null);
+    this.managementSuccess.set(null);
+    this.updateServerIconTrigger$.next({
+      token,
+      serverId: activeServer.id,
+      iconAsset,
+      iconLabel
+    });
   }
 
   isDeletingChannel(channelId: string): boolean {
@@ -3339,6 +3486,19 @@ export class AppComponent {
     }
 
     return `${seconds} сек`;
+  }
+
+  private buildServerIconAssetUrl(iconAsset: string): string {
+    return encodeURI(`${SERVER_ICON_DIRECTORY}/${iconAsset}`);
+  }
+
+  private resolveServerIconAsset(server: WorkspaceServer): string | null {
+    return server.icon_asset ?? DEFAULT_SERVER_ICON_ASSET_BY_NAME[server.name] ?? null;
+  }
+
+  private serverIconUrl(server: WorkspaceServer): string | null {
+    const iconAsset = this.resolveServerIconAsset(server);
+    return iconAsset ? this.buildServerIconAssetUrl(iconAsset) : null;
   }
 
   private buildServerLabel(name: string): string {

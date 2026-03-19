@@ -325,6 +325,40 @@ def test_admin_can_delete_text_and_voice_channels() -> None:
     assert voice_channel["id"] not in channel_ids
 
 
+def test_admin_can_update_server_icon() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        token = login_admin_user(client)
+        create_group_response = client.post(
+            "/api/servers",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "name": f"Иконка Группа {suffix}",
+                "description": "Группа для проверки иконки",
+            },
+        )
+        assert create_group_response.status_code == 201
+        group = create_group_response.json()
+
+        try:
+            update_response = client.patch(
+                f"/api/servers/{group['id']}/icon",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"icon_asset": "Империя.png"},
+            )
+            assert update_response.status_code == 200
+            assert update_response.json()["icon_asset"] == "Империя.png"
+
+            servers_response = client.get("/api/servers", headers={"Authorization": f"Bearer {token}"})
+            assert servers_response.status_code == 200
+        finally:
+            delete_server(group["id"])
+
+    updated_group = next(server for server in servers_response.json() if server["id"] == group["id"])
+    assert updated_group["icon_asset"] == "Империя.png"
+
+
 def test_regular_user_cannot_create_group() -> None:
     with TestClient(app) as client:
         token, payload = register_regular_user(client)

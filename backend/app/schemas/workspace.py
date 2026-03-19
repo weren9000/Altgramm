@@ -12,12 +12,17 @@ class ServerSummary(BaseModel):
     name: str
     slug: str
     description: str | None
+    icon_asset: str | None = None
     member_role: str
 
 
 class CreateServerRequest(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     description: str | None = Field(default=None, max_length=500)
+
+
+class UpdateServerIconRequest(BaseModel):
+    icon_asset: str | None = Field(default=None, max_length=255)
 
 
 class ChannelSummary(BaseModel):

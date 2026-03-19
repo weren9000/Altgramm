@@ -162,6 +162,16 @@ export class WorkspaceApiService {
     });
   }
 
+  updateServerIcon(token: string, serverId: string, iconAsset: string | null): Observable<WorkspaceServer> {
+    return this.http.patch<WorkspaceServer>(
+      `${API_BASE_URL}/api/servers/${serverId}/icon`,
+      { icon_asset: iconAsset },
+      {
+        headers: this.buildAuthHeaders(token)
+      }
+    );
+  }
+
   createChannel(token: string, serverId: string, payload: CreateWorkspaceChannelRequest): Observable<WorkspaceChannel> {
     return this.http.post<WorkspaceChannel>(`${API_BASE_URL}/api/servers/${serverId}/channels`, payload, {
       headers: this.buildAuthHeaders(token)

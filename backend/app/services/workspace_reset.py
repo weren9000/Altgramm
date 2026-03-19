@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models import Channel, ChannelType, MemberRole, Server, ServerMember, User, VoiceAccessRole, VoiceChannelAccess
 from app.services.default_tavern import ensure_default_tavern_access_for_users, ensure_default_tavern_channel
+from app.services.server_icons import get_default_server_icon_asset
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,7 @@ def reset_workspace_to_blueprint(
             name=blueprint_item.name,
             slug=_slugify(blueprint_item.name),
             description=None,
+            icon_asset=get_default_server_icon_asset(blueprint_item.name),
             owner_id=owner.id,
         )
         db.add(server)

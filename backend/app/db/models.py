@@ -86,6 +86,7 @@ class Server(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     slug: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    icon_asset: Mapped[str | None] = mapped_column(String(255), nullable=True)
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     owner: Mapped["User"] = relationship(back_populates="owned_servers")

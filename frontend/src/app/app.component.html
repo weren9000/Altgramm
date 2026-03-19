@@ -177,7 +177,13 @@
               type="button"
               (click)="selectServer(server.id)"
             >
-              <span class="server-token__mark">{{ server.label }}</span>
+              @if (server.iconUrl) {
+                <span class="server-token__mark server-token__mark--image">
+                  <img class="server-token__image" [src]="server.iconUrl" alt="" />
+                </span>
+              } @else {
+                <span class="server-token__mark">{{ server.label }}</span>
+              }
             </button>
           }
         } @else {
@@ -206,6 +212,11 @@
         <div class="rail-header__line">
           <p class="eyebrow">Группа</p>
           <h1>{{ activeServer()?.name ?? 'Tescord' }}</h1>
+          @if (canEditActiveServerIcon()) {
+            <button class="secondary-button rail-header__icon-action desktop-only-action" type="button" (click)="openServerIconModal()">
+              Иконка
+            </button>
+          }
         </div>
       </header>
 
@@ -1241,6 +1252,41 @@
           </button>
         </div>
       </form>
+    </section>
+  </div>
+}
+
+@if (serverIconModalOpen()) {
+  <div class="modal-backdrop" (click)="closeServerIconModal()">
+    <section class="modal modal--wide modal--icon-picker" (click)="$event.stopPropagation()">
+      <div class="modal__header">
+        <div>
+          <p class="eyebrow">Группа</p>
+          <h3>Выберите иконку</h3>
+        </div>
+        <button class="icon-button" type="button" (click)="closeServerIconModal()">✕</button>
+      </div>
+
+      <div class="modal__body icon-picker">
+        @for (icon of serverIconOptions; track icon.asset) {
+          <button
+            class="icon-picker__option"
+            [class.icon-picker__option--active]="activeServerIconAsset() === icon.asset"
+            type="button"
+            [disabled]="serverIconSaving()"
+            (click)="selectServerIcon(icon.asset)"
+          >
+            <span class="icon-picker__preview">
+              <img [src]="icon.url" [alt]="icon.label" />
+            </span>
+            <span class="icon-picker__label">{{ icon.label }}</span>
+          </button>
+        }
+      </div>
+
+      <div class="modal__actions">
+        <button class="secondary-button" type="button" (click)="closeServerIconModal()">Закрыть</button>
+      </div>
     </section>
   </div>
 }

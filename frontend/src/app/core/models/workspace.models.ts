@@ -13,6 +13,7 @@ export interface WorkspaceServer {
   name: string;
   slug: string;
   description: string | null;
+  icon_asset: string | null;
   member_role: string;
 }
 
