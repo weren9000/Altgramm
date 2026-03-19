@@ -217,7 +217,6 @@ const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
 const MAX_INLINE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const PRESENCE_ACTIVITY_THROTTLE_MS = 30000;
 const PRESENCE_KEEPALIVE_INTERVAL_MS = 45000;
-const SERVER_ICON_DIRECTORY = '/assets/Иконки групп';
 const SERVER_ICON_ASSETS = [
   'Общая.png',
   'Ан-Зайлиль.png',
@@ -252,6 +251,40 @@ const SERVER_ICON_ASSETS = [
   'Эльсвеер.png',
   'Южное племя.png'
 ] as const;
+const SERVER_ICON_URL_BY_ASSET: Record<(typeof SERVER_ICON_ASSETS)[number], string> = {
+  'Общая.png': new URL('../assets/Иконки групп/Общая.png', import.meta.url).href,
+  'Ан-Зайлиль.png': new URL('../assets/Иконки групп/Ан-Зайлиль.png', import.meta.url).href,
+  'Валенвуд.png': new URL('../assets/Иконки групп/Валенвуд.png', import.meta.url).href,
+  'Венценосные.png': new URL('../assets/Иконки групп/Венценосные.png', import.meta.url).href,
+  'Дом Даггерфорльский.png': new URL('../assets/Иконки групп/Дом Даггерфорльский.png', import.meta.url).href,
+  'Дом Каменный кулак.png': new URL('../assets/Иконки групп/Дом Каменный кулак.png', import.meta.url).href,
+  'Дом Меркатто.png': new URL('../assets/Иконки групп/Дом Меркатто.png', import.meta.url).href,
+  'Дом Редоран.png': new URL('../assets/Иконки групп/Дом Редоран.png', import.meta.url).href,
+  'Дом Тельванни.png': new URL('../assets/Иконки групп/Дом Тельванни.png', import.meta.url).href,
+  'Дом Титус.png': new URL('../assets/Иконки групп/Дом Титус.png', import.meta.url).href,
+  'Дом Фроуд.png': new URL('../assets/Иконки групп/Дом Фроуд.png', import.meta.url).href,
+  'Дракон.png': new URL('../assets/Иконки групп/Дракон.png', import.meta.url).href,
+  'Империя.png': new URL('../assets/Иконки групп/Империя.png', import.meta.url).href,
+  'Клан Диренни.png': new URL('../assets/Иконки групп/Клан Диренни.png', import.meta.url).href,
+  'Матиссен.png': new URL('../assets/Иконки групп/Матиссен.png', import.meta.url).href,
+  'Некроманты.png': new URL('../assets/Иконки групп/Некроманты.png', import.meta.url).href,
+  'Орден Араксии.png': new URL('../assets/Иконки групп/Орден Араксии.png', import.meta.url).href,
+  'Орден Вирвека.png': new URL('../assets/Иконки групп/Орден Вирвека.png', import.meta.url).href,
+  'Орден Красной горы.png': new URL('../assets/Иконки групп/Орден Красной горы.png', import.meta.url).href,
+  'Орден Мелора.png': new URL('../assets/Иконки групп/Орден Мелора.png', import.meta.url).href,
+  'Орден Талора.png': new URL('../assets/Иконки групп/Орден Талора.png', import.meta.url).href,
+  'Предшественники.png': new URL('../assets/Иконки групп/Предшественники.png', import.meta.url).href,
+  'Разбойники.png': new URL('../assets/Иконки групп/Разбойники.png', import.meta.url).href,
+  'Саммерсет.png': new URL('../assets/Иконки групп/Саммерсет.png', import.meta.url).href,
+  'Северное племя.png': new URL('../assets/Иконки групп/Северное племя.png', import.meta.url).href,
+  'Скайрим.png': new URL('../assets/Иконки групп/Скайрим.png', import.meta.url).href,
+  'Хай Рок.png': new URL('../assets/Иконки групп/Хай Рок.png', import.meta.url).href,
+  'Хаммерфелл.png': new URL('../assets/Иконки групп/Хаммерфелл.png', import.meta.url).href,
+  'Хист.png': new URL('../assets/Иконки групп/Хист.png', import.meta.url).href,
+  'Чернотопье.png': new URL('../assets/Иконки групп/Чернотопье.png', import.meta.url).href,
+  'Эльсвеер.png': new URL('../assets/Иконки групп/Эльсвеер.png', import.meta.url).href,
+  'Южное племя.png': new URL('../assets/Иконки групп/Южное племя.png', import.meta.url).href
+};
 const DEFAULT_SERVER_ICON_ASSET_BY_NAME: Record<string, string> = {
   'Общая': 'Общая.png',
   'Империя': 'Империя.png',
@@ -3489,7 +3522,7 @@ export class AppComponent {
   }
 
   private buildServerIconAssetUrl(iconAsset: string): string {
-    return encodeURI(`${SERVER_ICON_DIRECTORY}/${iconAsset}`);
+    return SERVER_ICON_URL_BY_ASSET[iconAsset as keyof typeof SERVER_ICON_URL_BY_ASSET] ?? '';
   }
 
   private resolveServerIconAsset(server: WorkspaceServer): string | null {
