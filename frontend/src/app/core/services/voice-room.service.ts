@@ -23,6 +23,7 @@ export interface VoiceSettings {
   inputDeviceId: string | null;
   outputDeviceId: string | null;
   sensitivity: number;
+  microphoneGain: number;
   masterVolume: number;
   participantVolumes: Record<string, number>;
 }
@@ -87,6 +88,19 @@ interface VoiceActivityMonitor {
   samples: Uint8Array;
 }
 
+interface LocalAudioPipeline {
+  source: MediaStreamAudioSourceNode;
+  gainNode: GainNode;
+  destination: MediaStreamAudioDestinationNode;
+}
+
+interface RemoteAudioOutput {
+  audioElement: HTMLAudioElement;
+  source: MediaStreamAudioSourceNode | null;
+  gainNode: GainNode | null;
+  destination: MediaStreamAudioDestinationNode | null;
+}
+
 interface VoiceJoinContext {
   channelId: string;
   token: string;
@@ -108,10 +122,12 @@ const VOICE_ACTIVITY_INTERVAL_MS = 120;
 const VOICE_ACTIVITY_HOLD_MS = 320;
 const VOICE_SOCKET_PING_INTERVAL_MS = 20000;
 const OWNER_MUTED_NOTICE = 'Микрофон заблокирован владельцем канала';
+const MAX_AUDIO_GAIN_PERCENT = 200;
 const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   inputDeviceId: null,
   outputDeviceId: null,
   sensitivity: 58,
+  microphoneGain: 100,
   masterVolume: 100,
   participantVolumes: {}
 };
@@ -132,12 +148,25 @@ function loadVoiceSettings(): VoiceSettings {
     }
 
     const parsed = JSON.parse(raw) as Partial<VoiceSettings>;
+    const participantVolumes = Object.entries(parsed.participantVolumes ?? {}).reduce<Record<string, number>>(
+      (accumulator, [userId, volume]) => {
+        accumulator[userId] = clamp(
+          typeof volume === 'number' ? volume : DEFAULT_VOICE_SETTINGS.masterVolume,
+          0,
+          MAX_AUDIO_GAIN_PERCENT
+        );
+        return accumulator;
+      },
+      {}
+    );
+
     return {
       inputDeviceId: parsed.inputDeviceId ?? null,
       outputDeviceId: parsed.outputDeviceId ?? null,
       sensitivity: clamp(parsed.sensitivity ?? DEFAULT_VOICE_SETTINGS.sensitivity, 0, 100),
-      masterVolume: clamp(parsed.masterVolume ?? DEFAULT_VOICE_SETTINGS.masterVolume, 0, 100),
-      participantVolumes: parsed.participantVolumes ?? {}
+      microphoneGain: clamp(parsed.microphoneGain ?? DEFAULT_VOICE_SETTINGS.microphoneGain, 0, MAX_AUDIO_GAIN_PERCENT),
+      masterVolume: clamp(parsed.masterVolume ?? DEFAULT_VOICE_SETTINGS.masterVolume, 0, MAX_AUDIO_GAIN_PERCENT),
+      participantVolumes
     };
   } catch {
     return DEFAULT_VOICE_SETTINGS;
@@ -160,7 +189,9 @@ export class VoiceRoomService {
   private localMonitor: VoiceActivityMonitor | null = null;
   private socket: WebSocket | null = null;
   private socketPingIntervalId: number | null = null;
+  private rawLocalStream: MediaStream | null = null;
   private localStream: MediaStream | null = null;
+  private localAudioPipeline: LocalAudioPipeline | null = null;
   private selfId: string | null = null;
   private lastJoinContext: VoiceJoinContext | null = null;
   private pendingPlaybackUnlock = new Set<string>();
@@ -168,7 +199,7 @@ export class VoiceRoomService {
   private readonly peerConnections = new Map<string, RTCPeerConnection>();
   private readonly pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
   private readonly remoteMonitors = new Map<string, VoiceActivityMonitor>();
-  private readonly remoteAudioElements = new Map<string, HTMLAudioElement>();
+  private readonly remoteAudioOutputs = new Map<string, RemoteAudioOutput>();
   private readonly participantUserIds = new Map<string, string>();
 
   readonly state = signal<VoiceConnectionState>('idle');
@@ -224,10 +255,10 @@ export class VoiceRoomService {
     ]);
 
     try {
-      this.localStream = await this.openLocalStream();
+      this.rawLocalStream = await this.openLocalStream();
+      this.localStream = await this.createProcessedLocalStream(this.rawLocalStream);
       this.localMuted.set(false);
       this.applyLocalTrackState();
-      await this.ensureAudioContext().catch(() => null);
       await this.refreshDevices();
       await this.openSocket(channelId, token);
     } catch (error) {
@@ -333,15 +364,22 @@ export class VoiceRoomService {
     });
   }
 
+  updateMicrophoneGain(value: number): void {
+    this.updateSettings({
+      microphoneGain: clamp(value, 0, MAX_AUDIO_GAIN_PERCENT)
+    });
+    this.applyLocalMicrophoneGain();
+  }
+
   updateMasterVolume(value: number): void {
     this.updateSettings({
-      masterVolume: clamp(value, 0, 100)
+      masterVolume: clamp(value, 0, MAX_AUDIO_GAIN_PERCENT)
     });
     this.applyAllRemoteVolumes();
   }
 
   updateParticipantVolume(userId: string, value: number): void {
-    const nextVolume = clamp(value, 0, 100);
+    const nextVolume = clamp(value, 0, MAX_AUDIO_GAIN_PERCENT);
     const participantVolumes = {
       ...this.settings().participantVolumes,
       [userId]: nextVolume
@@ -354,7 +392,7 @@ export class VoiceRoomService {
   }
 
   getParticipantVolume(userId: string): number {
-    return clamp(this.settings().participantVolumes[userId] ?? 100, 0, 100);
+    return clamp(this.settings().participantVolumes[userId] ?? 100, 0, MAX_AUDIO_GAIN_PERCENT);
   }
 
   private updateSettings(patch: Partial<VoiceSettings>): void {
@@ -378,6 +416,44 @@ export class VoiceRoomService {
       this.lastJoinContext.currentUser,
       true
     );
+  }
+
+  private async createProcessedLocalStream(rawLocalStream: MediaStream): Promise<MediaStream> {
+    const audioContext = await this.ensureAudioContext();
+    if (!audioContext) {
+      this.disposeLocalAudioPipeline();
+      return rawLocalStream;
+    }
+
+    this.disposeLocalAudioPipeline();
+
+    const source = audioContext.createMediaStreamSource(rawLocalStream);
+    const gainNode = audioContext.createGain();
+    const destination = audioContext.createMediaStreamDestination();
+
+    source.connect(gainNode);
+    gainNode.connect(destination);
+
+    this.localAudioPipeline = {
+      source,
+      gainNode,
+      destination
+    };
+    this.applyLocalMicrophoneGain();
+
+    return destination.stream;
+  }
+
+  private applyLocalMicrophoneGain(): void {
+    if (!this.localAudioPipeline || !this.audioContext) {
+      return;
+    }
+
+    this.localAudioPipeline.gainNode.gain.setValueAtTime(this.getMicrophoneGainMultiplier(), this.audioContext.currentTime);
+  }
+
+  private getMicrophoneGainMultiplier(): number {
+    return clamp(this.settings().microphoneGain / 100, 0, 2);
   }
 
   private async openLocalStream(): Promise<MediaStream> {
@@ -647,7 +723,7 @@ export class VoiceRoomService {
         return;
       }
 
-      this.attachRemoteAudio(participantId, stream);
+      void this.attachRemoteAudio(participantId, stream);
       void this.startRemoteVoiceActivityMonitor(participantId, stream).catch(() => undefined);
     };
 
@@ -664,12 +740,15 @@ export class VoiceRoomService {
   }
 
   private applyLocalTrackState(): void {
-    if (!this.localStream) {
+    if (!this.rawLocalStream && !this.localStream) {
       return;
     }
 
     const enabled = !(this.localMuted() || this.ownerMuted());
-    for (const track of this.localStream.getAudioTracks()) {
+    for (const track of this.rawLocalStream?.getAudioTracks() ?? []) {
+      track.enabled = enabled;
+    }
+    for (const track of this.localStream?.getAudioTracks() ?? []) {
       track.enabled = enabled;
     }
   }
@@ -690,18 +769,9 @@ export class VoiceRoomService {
     }
   }
 
-  private attachRemoteAudio(participantId: string, stream: MediaStream): void {
-    let audioElement = this.remoteAudioElements.get(participantId);
-    if (!audioElement) {
-      audioElement = document.createElement('audio');
-      audioElement.autoplay = true;
-      audioElement.setAttribute('playsinline', 'true');
-      audioElement.style.display = 'none';
-      document.body.appendChild(audioElement);
-      this.remoteAudioElements.set(participantId, audioElement);
-    }
-
-    audioElement.srcObject = stream;
+  private async attachRemoteAudio(participantId: string, stream: MediaStream): Promise<void> {
+    const remoteAudioOutput = await this.ensureRemoteAudioOutput(participantId, stream);
+    const audioElement = remoteAudioOutput.audioElement;
     void this.applyOutputDevice(audioElement).catch(() => undefined);
     this.applyVolumeToAudioElement(participantId);
     void this.playRemoteAudio(participantId, audioElement);
@@ -740,14 +810,14 @@ export class VoiceRoomService {
   }
 
   private async applyAudioOutputPreferences(): Promise<void> {
-    for (const audioElement of this.remoteAudioElements.values()) {
-      await this.applyOutputDevice(audioElement).catch(() => undefined);
+    for (const remoteAudioOutput of this.remoteAudioOutputs.values()) {
+      await this.applyOutputDevice(remoteAudioOutput.audioElement).catch(() => undefined);
     }
     this.applyAllRemoteVolumes();
   }
 
   private applyAllRemoteVolumes(): void {
-    for (const participantId of this.remoteAudioElements.keys()) {
+    for (const participantId of this.remoteAudioOutputs.keys()) {
       this.applyVolumeToAudioElement(participantId);
     }
   }
@@ -761,14 +831,84 @@ export class VoiceRoomService {
   }
 
   private applyVolumeToAudioElement(participantId: string): void {
-    const audioElement = this.remoteAudioElements.get(participantId);
+    const remoteAudioOutput = this.remoteAudioOutputs.get(participantId);
     const userId = this.participantUserIds.get(participantId);
-    if (!audioElement || !userId) {
+    if (!remoteAudioOutput || !userId) {
       return;
     }
 
-    const effectiveVolume = (this.settings().masterVolume / 100) * (this.getParticipantVolume(userId) / 100);
-    audioElement.volume = clamp(effectiveVolume, 0, 1);
+    const effectiveGain = this.getRemoteParticipantGain(userId);
+    if (remoteAudioOutput.gainNode && this.audioContext) {
+      remoteAudioOutput.gainNode.gain.setValueAtTime(effectiveGain, this.audioContext.currentTime);
+      remoteAudioOutput.audioElement.volume = 1;
+      return;
+    }
+
+    remoteAudioOutput.audioElement.volume = clamp(effectiveGain, 0, 1);
+  }
+
+  private getRemoteParticipantGain(userId: string): number {
+    const effectiveGain = (this.settings().masterVolume / 100) * (this.getParticipantVolume(userId) / 100);
+    return clamp(effectiveGain, 0, 2);
+  }
+
+  private async ensureRemoteAudioOutput(participantId: string, stream: MediaStream): Promise<RemoteAudioOutput> {
+    let remoteAudioOutput = this.remoteAudioOutputs.get(participantId);
+    if (!remoteAudioOutput) {
+      const audioElement = document.createElement('audio');
+      audioElement.autoplay = true;
+      audioElement.setAttribute('playsinline', 'true');
+      audioElement.style.display = 'none';
+      document.body.appendChild(audioElement);
+
+      remoteAudioOutput = {
+        audioElement,
+        source: null,
+        gainNode: null,
+        destination: null
+      };
+      this.remoteAudioOutputs.set(participantId, remoteAudioOutput);
+    }
+
+    this.disposeRemoteAudioGraph(remoteAudioOutput);
+
+    const audioContext = await this.ensureAudioContext();
+    if (!audioContext) {
+      remoteAudioOutput.audioElement.srcObject = stream;
+      return remoteAudioOutput;
+    }
+
+    const source = audioContext.createMediaStreamSource(stream);
+    const gainNode = audioContext.createGain();
+    const destination = audioContext.createMediaStreamDestination();
+
+    source.connect(gainNode);
+    gainNode.connect(destination);
+
+    remoteAudioOutput.source = source;
+    remoteAudioOutput.gainNode = gainNode;
+    remoteAudioOutput.destination = destination;
+    remoteAudioOutput.audioElement.srcObject = destination.stream;
+
+    return remoteAudioOutput;
+  }
+
+  private disposeRemoteAudioGraph(remoteAudioOutput: RemoteAudioOutput): void {
+    try {
+      remoteAudioOutput.source?.disconnect();
+    } catch {
+      // ignore disconnect errors for already disposed graphs
+    }
+
+    try {
+      remoteAudioOutput.gainNode?.disconnect();
+    } catch {
+      // ignore disconnect errors for already disposed graphs
+    }
+
+    remoteAudioOutput.source = null;
+    remoteAudioOutput.gainNode = null;
+    remoteAudioOutput.destination = null;
   }
 
   private updateLocalParticipantId(selfId: string): void {
@@ -838,11 +978,12 @@ export class VoiceRoomService {
       this.peerConnections.delete(participantId);
     }
 
-    const audioElement = this.remoteAudioElements.get(participantId);
-    if (audioElement) {
-      audioElement.srcObject = null;
-      audioElement.remove();
-      this.remoteAudioElements.delete(participantId);
+    const remoteAudioOutput = this.remoteAudioOutputs.get(participantId);
+    if (remoteAudioOutput) {
+      this.disposeRemoteAudioGraph(remoteAudioOutput);
+      remoteAudioOutput.audioElement.srcObject = null;
+      remoteAudioOutput.audioElement.remove();
+      this.remoteAudioOutputs.delete(participantId);
     }
 
     this.pendingIceCandidates.delete(participantId);
@@ -874,22 +1015,27 @@ export class VoiceRoomService {
   }
 
   private stopLocalStream(): void {
-    if (!this.localStream) {
-      return;
-    }
-
-    for (const track of this.localStream.getTracks()) {
+    for (const track of this.rawLocalStream?.getTracks() ?? []) {
       track.stop();
     }
+    if (this.localStream && this.localStream !== this.rawLocalStream) {
+      for (const track of this.localStream.getTracks()) {
+        track.stop();
+      }
+    }
+
+    this.disposeLocalAudioPipeline();
+    this.rawLocalStream = null;
     this.localStream = null;
   }
 
   private clearAudioElements(): void {
-    for (const audioElement of this.remoteAudioElements.values()) {
-      audioElement.srcObject = null;
-      audioElement.remove();
+    for (const remoteAudioOutput of this.remoteAudioOutputs.values()) {
+      this.disposeRemoteAudioGraph(remoteAudioOutput);
+      remoteAudioOutput.audioElement.srcObject = null;
+      remoteAudioOutput.audioElement.remove();
     }
-    this.remoteAudioElements.clear();
+    this.remoteAudioOutputs.clear();
   }
 
   private handlePeerConnectionFailure(participantId: string, message: string): void {
@@ -924,7 +1070,8 @@ export class VoiceRoomService {
   }
 
   private async startLocalVoiceActivityMonitor(): Promise<void> {
-    if (!this.localStream) {
+    const monitorStream = this.rawLocalStream ?? this.localStream;
+    if (!monitorStream) {
       return;
     }
 
@@ -932,7 +1079,7 @@ export class VoiceRoomService {
     this.stopLocalVoiceActivityMonitor();
     this.localMonitor = await this.createVoiceActivityMonitor(
       participantId,
-      this.localStream,
+      monitorStream,
       () => this.localMuted() || this.ownerMuted()
     );
   }
@@ -1085,7 +1232,7 @@ export class VoiceRoomService {
     await this.ensureAudioContext().catch(() => null);
 
     for (const participantId of [...this.pendingPlaybackUnlock]) {
-      const audioElement = this.remoteAudioElements.get(participantId);
+      const audioElement = this.remoteAudioOutputs.get(participantId)?.audioElement;
       if (!audioElement) {
         this.pendingPlaybackUnlock.delete(participantId);
         continue;
@@ -1116,6 +1263,8 @@ export class VoiceRoomService {
       void this.audioContext.close().catch(() => undefined);
       this.audioContext = null;
     }
+
+    this.disposeLocalAudioPipeline();
   }
 
   private stopLocalVoiceActivityMonitor(): void {
@@ -1125,6 +1274,26 @@ export class VoiceRoomService {
 
     this.disposeVoiceActivityMonitor(this.localMonitor);
     this.localMonitor = null;
+  }
+
+  private disposeLocalAudioPipeline(): void {
+    if (!this.localAudioPipeline) {
+      return;
+    }
+
+    try {
+      this.localAudioPipeline.source.disconnect();
+    } catch {
+      // ignore disconnect errors for already disposed graphs
+    }
+
+    try {
+      this.localAudioPipeline.gainNode.disconnect();
+    } catch {
+      // ignore disconnect errors for already disposed graphs
+    }
+
+    this.localAudioPipeline = null;
   }
 
   private stopRemoteVoiceActivityMonitor(participantId: string): void {

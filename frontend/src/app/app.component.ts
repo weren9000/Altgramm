@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { forkJoin } from 'rxjs';
+import { EMPTY, Subject, catchError, exhaustMap, finalize, forkJoin, tap } from 'rxjs';
 
 import { AuthApiService } from './core/api/auth-api.service';
 import { SystemApiService } from './core/api/system-api.service';
@@ -18,9 +18,11 @@ import {
   AppVoicePresenceUpdatedEvent,
   AppVoiceRequestResolvedEvent
 } from './core/models/app-events.models';
-import { AuthSessionResponse } from './core/models/auth.models';
+import { AuthLoginRequest, AuthRegisterRequest, AuthSessionResponse } from './core/models/auth.models';
 import { ApiHealthResponse } from './core/models/system.models';
 import {
+  CreateWorkspaceChannelRequest,
+  CreateWorkspaceServerRequest,
   CurrentUserResponse,
   VoiceAdminChannel,
   VoiceAdminUser,
@@ -111,6 +113,78 @@ interface BlockedVoiceJoinState {
   retryAfterSeconds: number | null;
 }
 
+interface VoiceAdminAccessMutation {
+  token: string;
+  channelId: string;
+  userId: string;
+  role: VoiceAccessRole | null;
+  successMessage: string;
+  errorMessage: string;
+  resetAssignmentUserId?: boolean;
+}
+
+interface CreateGroupTrigger {
+  token: string;
+  payload: CreateWorkspaceServerRequest;
+}
+
+interface CreateChannelTrigger {
+  token: string;
+  serverId: string;
+  payload: CreateWorkspaceChannelRequest;
+}
+
+interface DeleteChannelTrigger {
+  token: string;
+  serverId: string;
+  channel: WorkspaceChannel;
+}
+
+interface SendMessageTrigger {
+  token: string;
+  channelId: string;
+  payload: {
+    content: string;
+    files: File[];
+  };
+}
+
+interface DownloadAttachmentTrigger {
+  token: string;
+  attachment: WorkspaceMessageAttachment;
+}
+
+interface VoiceMemberRoleTrigger {
+  token: string;
+  channelId: string;
+  member: GroupMemberItem;
+  role: Extract<VoiceAccessRole, 'resident' | 'stranger'>;
+}
+
+interface KickVoiceMemberTrigger {
+  token: string;
+  channelId: string;
+  member: GroupMemberItem;
+}
+
+interface VoiceMemberOwnerMuteTrigger {
+  token: string;
+  channelId: string;
+  member: GroupMemberItem;
+  nextOwnerMuted: boolean;
+}
+
+interface ResolveVoiceRequestTrigger {
+  token: string;
+  request: VoiceJoinRequestSummary;
+  action: 'allow' | 'resident' | 'reject';
+}
+
+interface VoiceJoinRequestTrigger {
+  token: string;
+  channel: WorkspaceChannel;
+}
+
 const SESSION_STORAGE_KEY = 'tescord.session';
 const MESSAGES_PAGE_SIZE = 25;
 const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
@@ -146,6 +220,19 @@ export class AppComponent {
   private voiceJoinRequestPollIntervalId: number | null = null;
   private voiceJoinInboxPollIntervalId: number | null = null;
   private lastPresenceHeartbeatAt = 0;
+  private readonly loginSubmit$ = new Subject<AuthLoginRequest>();
+  private readonly registrationSubmit$ = new Subject<AuthRegisterRequest>();
+  private readonly voiceAdminAccessMutation$ = new Subject<VoiceAdminAccessMutation>();
+  private readonly createGroupSubmit$ = new Subject<CreateGroupTrigger>();
+  private readonly createChannelSubmit$ = new Subject<CreateChannelTrigger>();
+  private readonly deleteChannelTrigger$ = new Subject<DeleteChannelTrigger>();
+  private readonly sendMessageTrigger$ = new Subject<SendMessageTrigger>();
+  private readonly downloadAttachmentTrigger$ = new Subject<DownloadAttachmentTrigger>();
+  private readonly voiceMemberRoleTrigger$ = new Subject<VoiceMemberRoleTrigger>();
+  private readonly kickVoiceMemberTrigger$ = new Subject<KickVoiceMemberTrigger>();
+  private readonly voiceMemberOwnerMuteTrigger$ = new Subject<VoiceMemberOwnerMuteTrigger>();
+  private readonly resolveVoiceRequestTrigger$ = new Subject<ResolveVoiceRequestTrigger>();
+  private readonly voiceJoinRequestTrigger$ = new Subject<VoiceJoinRequestTrigger>();
 
   @ViewChild('messageList')
   private messageListRef?: ElementRef<HTMLElement>;
@@ -727,6 +814,7 @@ export class AppComponent {
       this.teardownPresenceActivityTracking();
       this.clearAttachmentPreviews();
     });
+    this.bindActionPipelines();
     this.appEvents.events$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event) => void this.handleAppEvent(event));
@@ -736,13 +824,388 @@ export class AppComponent {
     this.restoreSession();
   }
 
+  private bindActionPipelines(): void {
+    this.bindAuthPipelines();
+    this.bindVoiceAdminPipelines();
+    this.bindWorkspaceMutationPipelines();
+    this.bindMessagePipelines();
+    this.bindVoiceOwnershipPipelines();
+    this.bindVoiceJoinRequestPipeline();
+  }
+
+  private bindAuthPipelines(): void {
+    this.loginSubmit$
+      .pipe(
+        exhaustMap((payload) =>
+          this.authApi.login(payload).pipe(
+            tap((session) => this.handleAuthenticatedSession(session)),
+            catchError((error) => {
+              this.authError.set(this.extractErrorMessage(error, 'Не удалось выполнить вход'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.authLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.registrationSubmit$
+      .pipe(
+        exhaustMap((payload) =>
+          this.authApi.register(payload).pipe(
+            tap((session) => this.handleAuthenticatedSession(session)),
+            catchError((error) => {
+              this.authError.set(this.extractErrorMessage(error, 'Не удалось зарегистрироваться'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.authLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+  }
+
+  private bindVoiceAdminPipelines(): void {
+    this.voiceAdminAccessMutation$
+      .pipe(
+        exhaustMap((mutation) =>
+          this.workspaceApi.updateVoiceChannelAccess(mutation.token, mutation.channelId, mutation.userId, mutation.role).pipe(
+            tap((entries) => {
+              this.setVoiceChannelAccessEntries(mutation.channelId, entries);
+              if (mutation.resetAssignmentUserId) {
+                this.voiceAdminAssignmentForm.userId = '';
+              }
+              this.managementSuccess.set(mutation.successMessage);
+              void this.refreshVoiceAdminChannels();
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, mutation.errorMessage));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.voiceAdminSaving.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+  }
+
+  private bindWorkspaceMutationPipelines(): void {
+    this.createGroupSubmit$
+      .pipe(
+        exhaustMap(({ token, payload }) =>
+          this.workspaceApi.createServer(token, payload).pipe(
+            tap((server) => {
+              const updatedServers = [...this.servers(), server].sort((left, right) => left.name.localeCompare(right.name, 'ru'));
+              this.servers.set(updatedServers);
+              this.createGroupForm.name = '';
+              this.createGroupForm.description = '';
+              this.managementSuccess.set(`Группа «${server.name}» создана`);
+              this.createGroupModalOpen.set(false);
+              this.selectServer(server.id);
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, 'Не удалось создать группу'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.createGroupLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.createChannelSubmit$
+      .pipe(
+        exhaustMap(({ token, serverId, payload }) =>
+          this.workspaceApi.createChannel(token, serverId, payload).pipe(
+            tap((channel) => {
+              const updatedChannels = [...this.channels(), channel].sort((left, right) => left.position - right.position);
+              this.applyChannelsSnapshot(updatedChannels, token, channel.id);
+              this.createChannelForm.name = '';
+              this.createChannelForm.topic = '';
+              this.createChannelForm.type = 'text';
+              this.managementSuccess.set(
+                channel.type === 'voice'
+                  ? `Голосовой канал ${channel.name} создан`
+                  : `Текстовый канал #${channel.name} создан`
+              );
+              this.createChannelModalOpen.set(false);
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, 'Не удалось создать канал'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.createChannelLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.deleteChannelTrigger$
+      .pipe(
+        exhaustMap(({ token, serverId, channel }) =>
+          this.workspaceApi.deleteChannel(token, serverId, channel.id).pipe(
+            tap(() => {
+              if (channel.type === 'voice') {
+                this.voicePresence.update((entries) => entries.filter((entry) => entry.channel_id !== channel.id));
+
+                if (this.voiceAdminSelectedChannelId() === channel.id) {
+                  this.voiceAdminSelectedChannelId.set(null);
+                }
+
+                if (this.voiceAdminPanelOpen()) {
+                  void this.refreshVoiceAdminChannels();
+                }
+              }
+
+              this.managementSuccess.set(
+                channel.type === 'voice'
+                  ? `Голосовой канал ${channel.name} удален`
+                  : `Текстовый канал #${channel.name} удален`
+              );
+              this.applyChannelsSnapshot(
+                this.channels().filter((existingChannel) => existingChannel.id !== channel.id),
+                token
+              );
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, 'Не удалось удалить канал'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.deletingChannelId.set(null);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+  }
+
+  private bindMessagePipelines(): void {
+    this.sendMessageTrigger$
+      .pipe(
+        exhaustMap(({ token, channelId, payload }) =>
+          this.workspaceApi.sendMessage(token, channelId, payload).pipe(
+            tap((message) => {
+              this.messageDraft.set('');
+              this.pendingFiles.set([]);
+              this.scheduleMessageTextareaResize();
+
+              if (this.selectedChannelId() !== channelId) {
+                return;
+              }
+
+              this.messages.update((messages) => this.mergeMessagesChronologically([...messages, message]));
+              this.primeAttachmentPreviews([message]);
+              this.scrollMessagesToBottom();
+            }),
+            catchError((error) => {
+              this.messageError.set(this.extractErrorMessage(error, 'Не удалось отправить сообщение'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.messageSubmitting.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.downloadAttachmentTrigger$
+      .pipe(
+        exhaustMap(({ token, attachment }) =>
+          this.workspaceApi.downloadAttachment(token, attachment.id).pipe(
+            tap((blob) => {
+              const objectUrl = URL.createObjectURL(blob);
+              const anchor = document.createElement('a');
+              anchor.href = objectUrl;
+              anchor.download = attachment.filename;
+              anchor.click();
+              window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+            }),
+            catchError((error) => {
+              this.messageError.set(this.extractErrorMessage(error, 'Не удалось скачать файл'));
+              return EMPTY;
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+  }
+
+  private bindVoiceOwnershipPipelines(): void {
+    this.voiceMemberRoleTrigger$
+      .pipe(
+        exhaustMap(({ token, channelId, member, role }) =>
+          this.workspaceApi.updateVoiceChannelAccess(token, channelId, member.userId, role).pipe(
+            tap((entries) => {
+              this.setVoiceChannelAccessEntries(channelId, entries);
+              this.managementSuccess.set(
+                role === 'resident'
+                  ? `${member.nick} теперь житель канала`
+                  : `${member.nick} теперь чужак канала`
+              );
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, 'Не удалось изменить роль участника'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.voiceOwnerActionLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.kickVoiceMemberTrigger$
+      .pipe(
+        exhaustMap(({ token, channelId, member }) =>
+          this.workspaceApi.kickVoiceParticipant(token, channelId, member.userId).pipe(
+            tap((entries) => {
+              this.setVoiceChannelAccessEntries(channelId, entries);
+              this.managementSuccess.set(`${member.nick} выгнан из канала на 5 минут`);
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, 'Не удалось выгнать участника'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.voiceOwnerActionLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.voiceMemberOwnerMuteTrigger$
+      .pipe(
+        exhaustMap(({ token, channelId, member, nextOwnerMuted }) =>
+          this.workspaceApi.updateVoiceParticipantOwnerMute(token, channelId, member.userId, nextOwnerMuted).pipe(
+            tap((entries) => {
+              this.setVoiceChannelAccessEntries(channelId, entries);
+              this.managementSuccess.set(
+                nextOwnerMuted
+                  ? `${member.nick}: микрофон заблокирован владельцем`
+                  : `${member.nick}: блокировка микрофона снята`
+              );
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, 'Не удалось изменить доступ к микрофону'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.voiceOwnerActionLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.resolveVoiceRequestTrigger$
+      .pipe(
+        exhaustMap(({ token, request, action }) =>
+          this.workspaceApi.resolveVoiceJoinRequest(token, request.id, action).pipe(
+            tap(() => {
+              this.ownerVoiceRequests.update((requests) => requests.filter((entry) => entry.id !== request.id));
+              this.activeOwnerRequestId.set(this.ownerVoiceRequests()[0]?.id ?? null);
+              this.ownerVoiceRequestModalOpen.set(this.ownerVoiceRequests().length > 0);
+              this.managementSuccess.set(
+                action === 'allow'
+                  ? 'Пользователь может зайти в канал'
+                  : action === 'resident'
+                    ? 'Пользователь стал жителем канала'
+                    : 'Пользователь выгнан и не сможет зайти 5 минут'
+              );
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, 'Не удалось обработать запрос на вход'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.voiceOwnerActionLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+  }
+
+  private bindVoiceJoinRequestPipeline(): void {
+    this.voiceJoinRequestTrigger$
+      .pipe(
+        exhaustMap(({ token, channel }) =>
+          this.workspaceApi.requestVoiceJoin(token, channel.id).pipe(
+            tap((response: VoiceJoinRequestCreateResponse) => {
+              if (response.can_join_now) {
+                this.pendingVoiceJoin.set(null);
+                void this.connectToVoiceChannel(channel);
+                return;
+              }
+
+              if (!response.request) {
+                this.workspaceError.set(response.detail);
+                return;
+              }
+
+              this.pendingVoiceJoin.set({
+                requestId: response.request.id,
+                channelId: response.request.channel_id,
+                channelName: response.request.channel_name,
+                detail: response.detail
+              });
+            }),
+            catchError((error) => {
+              const blockedNotice = this.extractBlockedVoiceJoinNotice(error);
+              if (blockedNotice) {
+                this.openBlockedVoiceJoinNotice(
+                  channel.id,
+                  channel.name,
+                  blockedNotice.message,
+                  blockedNotice.retryAfterSeconds,
+                  blockedNotice.blockedUntil
+                );
+                return EMPTY;
+              }
+
+              this.workspaceError.set(this.extractErrorMessage(error, 'Не удалось отправить запрос владельцу канала'));
+              return EMPTY;
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+  }
+
   switchAuthMode(mode: AuthMode): void {
     this.authMode.set(mode);
     this.authError.set(null);
   }
 
   submitLogin(): void {
-    const payload = {
+    const payload: AuthLoginRequest = {
       login: this.loginForm.login.trim(),
       password: this.loginForm.password
     };
@@ -754,21 +1217,11 @@ export class AppComponent {
 
     this.authLoading.set(true);
     this.authError.set(null);
-
-    this.authApi
-      .login(payload)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (session) => this.handleAuthenticatedSession(session),
-        error: (error) => {
-          this.authLoading.set(false);
-          this.authError.set(this.extractErrorMessage(error, 'Не удалось выполнить вход'));
-        }
-      });
+    this.loginSubmit$.next(payload);
   }
 
   submitRegistration(): void {
-    const payload = {
+    const payload: AuthRegisterRequest = {
       login: this.registerForm.login.trim(),
       password: this.registerForm.password,
       full_name: this.registerForm.full_name.trim(),
@@ -783,17 +1236,7 @@ export class AppComponent {
 
     this.authLoading.set(true);
     this.authError.set(null);
-
-    this.authApi
-      .register(payload)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (session) => this.handleAuthenticatedSession(session),
-        error: (error) => {
-          this.authLoading.set(false);
-          this.authError.set(this.extractErrorMessage(error, 'Не удалось зарегистрироваться'));
-        }
-      });
+    this.registrationSubmit$.next(payload);
   }
 
   openVoiceSettings(): void {
@@ -891,28 +1334,15 @@ export class AppComponent {
 
     this.voiceAdminSaving.set(true);
     this.managementError.set(null);
-
-    this.workspaceApi
-      .updateVoiceChannelAccess(
-        token,
-        channelId,
-        this.voiceAdminAssignmentForm.userId,
-        this.voiceAdminAssignmentForm.role
-      )
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (entries) => {
-          this.voiceAdminSaving.set(false);
-          this.setVoiceChannelAccessEntries(channelId, entries);
-          this.voiceAdminAssignmentForm.userId = '';
-          this.managementSuccess.set('Доступ к голосовому каналу обновлен');
-          void this.refreshVoiceAdminChannels();
-        },
-        error: (error) => {
-          this.voiceAdminSaving.set(false);
-          this.managementError.set(this.extractErrorMessage(error, 'Не удалось обновить доступ к голосовому каналу'));
-        }
-      });
+    this.voiceAdminAccessMutation$.next({
+      token,
+      channelId,
+      userId: this.voiceAdminAssignmentForm.userId,
+      role: this.voiceAdminAssignmentForm.role,
+      successMessage: 'Доступ к голосовому каналу обновлен',
+      errorMessage: 'Не удалось обновить доступ к голосовому каналу',
+      resetAssignmentUserId: true
+    });
   }
 
   applyVoiceAdminRole(userId: string, role: VoiceAccessRole): void {
@@ -924,22 +1354,14 @@ export class AppComponent {
 
     this.voiceAdminSaving.set(true);
     this.managementError.set(null);
-
-    this.workspaceApi
-      .updateVoiceChannelAccess(token, channelId, userId, role)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (entries) => {
-          this.voiceAdminSaving.set(false);
-          this.setVoiceChannelAccessEntries(channelId, entries);
-          this.managementSuccess.set('Роль доступа обновлена');
-          void this.refreshVoiceAdminChannels();
-        },
-        error: (error) => {
-          this.voiceAdminSaving.set(false);
-          this.managementError.set(this.extractErrorMessage(error, 'Не удалось обновить роль доступа'));
-        }
-      });
+    this.voiceAdminAccessMutation$.next({
+      token,
+      channelId,
+      userId,
+      role,
+      successMessage: 'Роль доступа обновлена',
+      errorMessage: 'Не удалось обновить роль доступа'
+    });
   }
 
   removeVoiceAdminAccess(userId: string): void {
@@ -951,22 +1373,14 @@ export class AppComponent {
 
     this.voiceAdminSaving.set(true);
     this.managementError.set(null);
-
-    this.workspaceApi
-      .updateVoiceChannelAccess(token, channelId, userId, null)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (entries) => {
-          this.voiceAdminSaving.set(false);
-          this.setVoiceChannelAccessEntries(channelId, entries);
-          this.managementSuccess.set('Пользователь скрыт из голосового канала');
-          void this.refreshVoiceAdminChannels();
-        },
-        error: (error) => {
-          this.voiceAdminSaving.set(false);
-          this.managementError.set(this.extractErrorMessage(error, 'Не удалось убрать доступ к голосовому каналу'));
-        }
-      });
+    this.voiceAdminAccessMutation$.next({
+      token,
+      channelId,
+      userId,
+      role: null,
+      successMessage: 'Пользователь скрыт из голосового канала',
+      errorMessage: 'Не удалось убрать доступ к голосовому каналу'
+    });
   }
 
   submitCreateGroup(): void {
@@ -975,7 +1389,7 @@ export class AppComponent {
       return;
     }
 
-    const payload = {
+    const payload: CreateWorkspaceServerRequest = {
       name: this.createGroupForm.name.trim(),
       description: this.createGroupForm.description.trim() || null
     };
@@ -988,26 +1402,7 @@ export class AppComponent {
     this.createGroupLoading.set(true);
     this.managementError.set(null);
     this.managementSuccess.set(null);
-
-    this.workspaceApi
-      .createServer(token, payload)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (server) => {
-          const updatedServers = [...this.servers(), server].sort((left, right) => left.name.localeCompare(right.name, 'ru'));
-          this.servers.set(updatedServers);
-          this.createGroupForm.name = '';
-          this.createGroupForm.description = '';
-          this.managementSuccess.set(`Группа «${server.name}» создана`);
-          this.createGroupLoading.set(false);
-          this.createGroupModalOpen.set(false);
-          this.selectServer(server.id);
-        },
-        error: (error) => {
-          this.createGroupLoading.set(false);
-          this.managementError.set(this.extractErrorMessage(error, 'Не удалось создать группу'));
-        }
-      });
+    this.createGroupSubmit$.next({ token, payload });
   }
 
   submitCreateChannel(): void {
@@ -1017,7 +1412,7 @@ export class AppComponent {
       return;
     }
 
-    const payload = {
+    const payload: CreateWorkspaceChannelRequest = {
       name: this.createChannelForm.name.trim(),
       topic: this.createChannelForm.topic.trim() || null,
       type: this.createChannelForm.type
@@ -1031,30 +1426,11 @@ export class AppComponent {
     this.createChannelLoading.set(true);
     this.managementError.set(null);
     this.managementSuccess.set(null);
-
-    this.workspaceApi
-      .createChannel(token, activeServer.id, payload)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (channel) => {
-          const updatedChannels = [...this.channels(), channel].sort((left, right) => left.position - right.position);
-          this.applyChannelsSnapshot(updatedChannels, token, channel.id);
-          this.createChannelForm.name = '';
-          this.createChannelForm.topic = '';
-          this.createChannelForm.type = 'text';
-          this.managementSuccess.set(
-            channel.type === 'voice'
-              ? `Голосовой канал ${channel.name} создан`
-              : `Текстовый канал #${channel.name} создан`
-          );
-          this.createChannelLoading.set(false);
-          this.createChannelModalOpen.set(false);
-        },
-        error: (error) => {
-          this.createChannelLoading.set(false);
-          this.managementError.set(this.extractErrorMessage(error, 'Не удалось создать канал'));
-        }
-      });
+    this.createChannelSubmit$.next({
+      token,
+      serverId: activeServer.id,
+      payload
+    });
   }
 
   deleteChannel(channel: WorkspaceChannel): void {
@@ -1087,41 +1463,11 @@ export class AppComponent {
     this.deletingChannelId.set(channel.id);
     this.managementError.set(null);
     this.managementSuccess.set(null);
-
-    this.workspaceApi
-      .deleteChannel(token, activeServer.id, channel.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => {
-          this.deletingChannelId.set(null);
-
-          if (channel.type === 'voice') {
-            this.voicePresence.update((entries) => entries.filter((entry) => entry.channel_id !== channel.id));
-
-            if (this.voiceAdminSelectedChannelId() === channel.id) {
-              this.voiceAdminSelectedChannelId.set(null);
-            }
-
-            if (this.voiceAdminPanelOpen()) {
-              void this.refreshVoiceAdminChannels();
-            }
-          }
-
-          this.managementSuccess.set(
-            channel.type === 'voice'
-              ? `Голосовой канал ${channel.name} удален`
-              : `Текстовый канал #${channel.name} удален`
-          );
-          this.applyChannelsSnapshot(
-            this.channels().filter((existingChannel) => existingChannel.id !== channel.id),
-            token
-          );
-        },
-        error: (error) => {
-          this.deletingChannelId.set(null);
-          this.managementError.set(this.extractErrorMessage(error, 'Не удалось удалить канал'));
-        }
-      });
+    this.deleteChannelTrigger$.next({
+      token,
+      serverId: activeServer.id,
+      channel
+    });
   }
 
   onMessageDraftChange(value: string): void {
@@ -1209,30 +1555,7 @@ export class AppComponent {
     this.messageSubmitting.set(true);
     this.messageError.set(null);
     this.schedulePresenceHeartbeat(true);
-
-    this.workspaceApi
-      .sendMessage(token, channelId, payload)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (message) => {
-          this.messageSubmitting.set(false);
-          this.messageDraft.set('');
-          this.pendingFiles.set([]);
-          this.scheduleMessageTextareaResize();
-
-          if (this.selectedChannelId() !== channelId) {
-            return;
-          }
-
-          this.messages.update((messages) => this.mergeMessagesChronologically([...messages, message]));
-          this.primeAttachmentPreviews([message]);
-          this.scrollMessagesToBottom();
-        },
-        error: (error) => {
-          this.messageSubmitting.set(false);
-          this.messageError.set(this.extractErrorMessage(error, 'Не удалось отправить сообщение'));
-        }
-      });
+    this.sendMessageTrigger$.next({ token, channelId, payload });
   }
 
   downloadAttachment(attachment: WorkspaceMessageAttachment): void {
@@ -1241,22 +1564,7 @@ export class AppComponent {
       return;
     }
 
-    this.workspaceApi
-      .downloadAttachment(token, attachment.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (blob) => {
-          const objectUrl = URL.createObjectURL(blob);
-          const anchor = document.createElement('a');
-          anchor.href = objectUrl;
-          anchor.download = attachment.filename;
-          anchor.click();
-          window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-        },
-        error: (error) => {
-          this.messageError.set(this.extractErrorMessage(error, 'Не удалось скачать файл'));
-        }
-      });
+    this.downloadAttachmentTrigger$.next({ token, attachment });
   }
 
   async joinActiveVoiceChannel(): Promise<void> {
@@ -1315,6 +1623,10 @@ export class AppComponent {
     this.voiceRoom.updateSensitivity(this.toRangeValue(value));
   }
 
+  changeMicrophoneGain(value: number | string): void {
+    this.voiceRoom.updateMicrophoneGain(this.toRangeValue(value));
+  }
+
   changeMasterVolume(value: number | string): void {
     this.voiceRoom.updateMasterVolume(this.toRangeValue(value));
   }
@@ -1346,25 +1658,7 @@ export class AppComponent {
 
     this.voiceOwnerActionLoading.set(true);
     this.managementError.set(null);
-
-    this.workspaceApi
-      .updateVoiceChannelAccess(token, channelId, member.userId, role)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (entries) => {
-          this.voiceOwnerActionLoading.set(false);
-          this.setVoiceChannelAccessEntries(channelId, entries);
-          this.managementSuccess.set(
-            role === 'resident'
-              ? `${member.nick} теперь житель канала`
-              : `${member.nick} теперь чужак канала`
-          );
-        },
-        error: (error) => {
-          this.voiceOwnerActionLoading.set(false);
-          this.managementError.set(this.extractErrorMessage(error, 'Не удалось изменить роль участника'));
-        }
-      });
+    this.voiceMemberRoleTrigger$.next({ token, channelId, member, role });
   }
 
   kickSelectedVoiceMember(): void {
@@ -1377,21 +1671,7 @@ export class AppComponent {
 
     this.voiceOwnerActionLoading.set(true);
     this.managementError.set(null);
-
-    this.workspaceApi
-      .kickVoiceParticipant(token, channelId, member.userId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (entries) => {
-          this.voiceOwnerActionLoading.set(false);
-          this.setVoiceChannelAccessEntries(channelId, entries);
-          this.managementSuccess.set(`${member.nick} выгнан из канала на 5 минут`);
-        },
-        error: (error) => {
-          this.voiceOwnerActionLoading.set(false);
-          this.managementError.set(this.extractErrorMessage(error, 'Не удалось выгнать участника'));
-        }
-      });
+    this.kickVoiceMemberTrigger$.next({ token, channelId, member });
   }
 
   toggleSelectedVoiceMemberOwnerMute(): void {
@@ -1405,25 +1685,7 @@ export class AppComponent {
     const nextOwnerMuted = !this.selectedVoiceMemberOwnerMuted();
     this.voiceOwnerActionLoading.set(true);
     this.managementError.set(null);
-
-    this.workspaceApi
-      .updateVoiceParticipantOwnerMute(token, channelId, member.userId, nextOwnerMuted)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (entries) => {
-          this.voiceOwnerActionLoading.set(false);
-          this.setVoiceChannelAccessEntries(channelId, entries);
-          this.managementSuccess.set(
-            nextOwnerMuted
-              ? `${member.nick}: микрофон заблокирован владельцем`
-              : `${member.nick}: блокировка микрофона снята`
-          );
-        },
-        error: (error) => {
-          this.voiceOwnerActionLoading.set(false);
-          this.managementError.set(this.extractErrorMessage(error, 'Не удалось изменить доступ к микрофону'));
-        }
-      });
+    this.voiceMemberOwnerMuteTrigger$.next({ token, channelId, member, nextOwnerMuted });
   }
 
   closePendingVoiceJoin(): void {
@@ -1449,29 +1711,11 @@ export class AppComponent {
 
     this.voiceOwnerActionLoading.set(true);
     this.managementError.set(null);
-
-    this.workspaceApi
-      .resolveVoiceJoinRequest(token, activeRequest.id, action)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => {
-          this.voiceOwnerActionLoading.set(false);
-          this.ownerVoiceRequests.update((requests) => requests.filter((request) => request.id !== activeRequest.id));
-          this.activeOwnerRequestId.set(this.ownerVoiceRequests()[0]?.id ?? null);
-          this.ownerVoiceRequestModalOpen.set(this.ownerVoiceRequests().length > 0);
-          this.managementSuccess.set(
-            action === 'allow'
-              ? 'Пользователь может зайти в канал'
-              : action === 'resident'
-                ? 'Пользователь стал жителем канала'
-                : 'Пользователь выгнан и не сможет зайти 5 минут'
-          );
-        },
-        error: (error) => {
-          this.voiceOwnerActionLoading.set(false);
-          this.managementError.set(this.extractErrorMessage(error, 'Не удалось обработать запрос на вход'));
-        }
-      });
+    this.resolveVoiceRequestTrigger$.next({
+      token,
+      request: activeRequest,
+      action
+    });
   }
 
   logout(): void {
@@ -2589,46 +2833,7 @@ export class AppComponent {
 
     this.workspaceError.set(null);
     this.closeBlockedVoiceJoinNotice();
-
-    this.workspaceApi
-      .requestVoiceJoin(token, channel.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: async (response: VoiceJoinRequestCreateResponse) => {
-          if (response.can_join_now) {
-            this.pendingVoiceJoin.set(null);
-            await this.connectToVoiceChannel(channel);
-            return;
-          }
-
-          if (!response.request) {
-            this.workspaceError.set(response.detail);
-            return;
-          }
-
-          this.pendingVoiceJoin.set({
-            requestId: response.request.id,
-            channelId: response.request.channel_id,
-            channelName: response.request.channel_name,
-            detail: response.detail,
-          });
-        },
-        error: (error) => {
-          const blockedNotice = this.extractBlockedVoiceJoinNotice(error);
-          if (blockedNotice) {
-            this.openBlockedVoiceJoinNotice(
-              channel.id,
-              channel.name,
-              blockedNotice.message,
-              blockedNotice.retryAfterSeconds,
-              blockedNotice.blockedUntil
-            );
-            return;
-          }
-
-          this.workspaceError.set(this.extractErrorMessage(error, 'Не удалось отправить запрос владельцу канала'));
-        }
-      });
+    this.voiceJoinRequestTrigger$.next({ token, channel });
   }
 
   private async connectToVoiceChannel(channel: WorkspaceChannel): Promise<void> {

@@ -863,6 +863,23 @@
           </label>
 
           <label class="range-field">
+            <span>Усиление микрофона</span>
+            <div class="range-field__control">
+              <input
+                type="range"
+                min="0"
+                max="200"
+                step="1"
+                [ngModel]="voiceSettings().microphoneGain"
+                name="microphone_gain"
+                (ngModelChange)="changeMicrophoneGain($event)"
+              />
+              <strong>{{ voiceSettings().microphoneGain }}%</strong>
+            </div>
+            <small>Увеличивает громкость вашего микрофона для других участников.</small>
+          </label>
+
+          <label class="range-field">
             <span>Чувствительность микрофона</span>
             <div class="range-field__control">
               <input
@@ -885,7 +902,7 @@
               <input
                 type="range"
                 min="0"
-                max="100"
+                max="200"
                 step="1"
                 [ngModel]="voiceSettings().masterVolume"
                 name="master_volume"
@@ -1128,7 +1145,7 @@
             <input
               type="range"
               min="0"
-              max="100"
+              max="200"
               step="1"
               [ngModel]="selectedMemberVolume()"
               name="participant_volume"
