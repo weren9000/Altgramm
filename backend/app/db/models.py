@@ -47,6 +47,19 @@ class MessageType(str, enum.Enum):
     SYSTEM = "system"
 
 
+class MessageReactionKind(str, enum.Enum):
+    HEART = "heart"
+    LIKE = "like"
+    DISLIKE = "dislike"
+    ANGRY = "angry"
+    CRY = "cry"
+    CONFUSED = "confused"
+    DISPLEASED = "displeased"
+    LAUGH = "laugh"
+    FIRE = "fire"
+    WOW = "wow"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -71,6 +84,10 @@ class User(TimestampMixin, Base):
     owned_servers: Mapped[list["Server"]] = relationship(back_populates="owner")
     memberships: Mapped[list["ServerMember"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     messages: Mapped[list["Message"]] = relationship(back_populates="author", cascade="all, delete-orphan")
+    message_reactions: Mapped[list["MessageReaction"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     created_channels: Mapped[list["Channel"]] = relationship(back_populates="created_by")
     voice_permissions: Mapped[list["VoiceChannelAccess"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     requested_voice_joins: Mapped[list["VoiceJoinRequest"]] = relationship(
@@ -164,6 +181,10 @@ class Message(TimestampMixin, Base):
     channel: Mapped["Channel"] = relationship(back_populates="messages")
     author: Mapped["User"] = relationship(back_populates="messages")
     attachments: Mapped[list["Attachment"]] = relationship(back_populates="message", cascade="all, delete-orphan")
+    reactions: Mapped[list["MessageReaction"]] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
+    )
 
 
 class Attachment(Base):
@@ -180,6 +201,25 @@ class Attachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     message: Mapped["Message"] = relationship(back_populates="attachments")
+
+
+class MessageReaction(TimestampMixin, Base):
+    __tablename__ = "message_reactions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", "reaction", name="uq_message_reactions_message_user_reaction"),
+        Index("ix_message_reactions_message_reaction", "message_id", "reaction"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    reaction: Mapped[MessageReactionKind] = mapped_column(
+        Enum(MessageReactionKind, name="messagereactionkind", values_callable=enum_values),
+        nullable=False,
+    )
+
+    message: Mapped["Message"] = relationship(back_populates="reactions")
+    user: Mapped["User"] = relationship(back_populates="message_reactions")
 
 
 class VoiceChannelAccess(TimestampMixin, Base):

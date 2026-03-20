@@ -14,6 +14,8 @@ import {
   VoiceJoinRequestSummary,
   WorkspaceChannel,
   WorkspaceMessage,
+  WorkspaceMessageReactionCode,
+  WorkspaceMessageReactionsSnapshot,
   WorkspaceMessagePage,
   WorkspaceMember,
   WorkspaceServer,
@@ -213,6 +215,33 @@ export class WorkspaceApiService {
     return this.http.post<WorkspaceMessage>(`${API_BASE_URL}/api/channels/${channelId}/messages`, formData, {
       headers: this.buildAuthHeaders(token)
     });
+  }
+
+  addMessageReaction(
+    token: string,
+    messageId: string,
+    reactionCode: WorkspaceMessageReactionCode
+  ): Observable<WorkspaceMessageReactionsSnapshot> {
+    return this.http.put<WorkspaceMessageReactionsSnapshot>(
+      `${API_BASE_URL}/api/messages/${messageId}/reactions/${reactionCode}`,
+      null,
+      {
+        headers: this.buildAuthHeaders(token)
+      }
+    );
+  }
+
+  removeMessageReaction(
+    token: string,
+    messageId: string,
+    reactionCode: WorkspaceMessageReactionCode
+  ): Observable<WorkspaceMessageReactionsSnapshot> {
+    return this.http.delete<WorkspaceMessageReactionsSnapshot>(
+      `${API_BASE_URL}/api/messages/${messageId}/reactions/${reactionCode}`,
+      {
+        headers: this.buildAuthHeaders(token)
+      }
+    );
   }
 
   downloadAttachment(token: string, attachmentId: string): Observable<Blob> {

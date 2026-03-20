@@ -450,6 +450,41 @@ def test_app_events_websocket_pushes_new_message_to_connected_clients() -> None:
     assert pushed_event["message"]["content"] == f"realtime-{suffix}"
 
 
+def test_app_events_websocket_pushes_message_reaction_updates() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        admin_token = login_admin_user(client)
+        regular_token, payload = register_regular_user(client)
+        server, text_channel = get_seed_server_and_text_channel(client, admin_token)
+
+        try:
+            create_message_response = client.post(
+                f"/api/channels/{text_channel['id']}/messages",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                data={"content": f"react-{suffix}"},
+            )
+            assert create_message_response.status_code == 201
+            message_id = create_message_response.json()["id"]
+
+            with connect_app_events_websocket(client, regular_token, server["id"]) as websocket:
+                reaction_response = client.put(
+                    f"/api/messages/{message_id}/reactions/like",
+                    headers={"Authorization": f"Bearer {admin_token}"},
+                )
+
+                assert reaction_response.status_code == 200
+                pushed_event = websocket.receive_json()
+        finally:
+            delete_user(payload["login"])
+
+    assert pushed_event["type"] == "message_reactions_updated"
+    assert pushed_event["server_id"] == server["id"]
+    assert pushed_event["channel_id"] == text_channel["id"]
+    assert pushed_event["snapshot"]["message_id"] == message_id
+    assert pushed_event["snapshot"]["reactions"] == [{"code": "like", "count": 1, "reacted": False}]
+
+
 def test_regular_user_can_access_all_groups_channels_and_members() -> None:
     with TestClient(app) as client:
         token, payload = register_regular_user(client)
@@ -906,3 +941,51 @@ def test_can_send_message_with_attachment_and_download_it() -> None:
     assert download_response.status_code == 200
     assert download_response.headers["content-type"].startswith("text/plain")
     assert download_response.content == b"Tescord attachment payload"
+
+
+def test_can_add_and_remove_message_reactions() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        token = login_admin_user(client)
+        group, channel = create_temp_text_channel(client, token, suffix)
+
+        try:
+            create_message_response = client.post(
+                f"/api/channels/{channel['id']}/messages",
+                headers={"Authorization": f"Bearer {token}"},
+                data={"content": "reaction-target"},
+            )
+            assert create_message_response.status_code == 201
+            message_id = create_message_response.json()["id"]
+
+            add_reaction_response = client.put(
+                f"/api/messages/{message_id}/reactions/heart",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert add_reaction_response.status_code == 200
+
+            list_response = client.get(
+                f"/api/channels/{channel['id']}/messages?limit=10",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert list_response.status_code == 200
+
+            remove_reaction_response = client.delete(
+                f"/api/messages/{message_id}/reactions/heart",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert remove_reaction_response.status_code == 200
+        finally:
+            delete_server(group["id"])
+
+    add_snapshot = add_reaction_response.json()
+    assert add_snapshot["message_id"] == message_id
+    assert add_snapshot["reactions"] == [{"code": "heart", "count": 1, "reacted": True}]
+
+    listed_message = next(message for message in list_response.json()["items"] if message["id"] == message_id)
+    assert listed_message["reactions"] == [{"code": "heart", "count": 1, "reacted": True}]
+
+    remove_snapshot = remove_reaction_response.json()
+    assert remove_snapshot["message_id"] == message_id
+    assert remove_snapshot["reactions"] == []

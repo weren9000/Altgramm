@@ -83,6 +83,12 @@ class MessageAttachmentSummary(BaseModel):
     created_at: datetime
 
 
+class MessageReactionSummary(BaseModel):
+    code: str
+    count: int
+    reacted: bool
+
+
 class ChannelMessageSummary(BaseModel):
     id: UUID
     channel_id: UUID
@@ -92,6 +98,13 @@ class ChannelMessageSummary(BaseModel):
     edited_at: datetime | None
     author: MessageAuthorSummary
     attachments: list[MessageAttachmentSummary]
+    reactions: list[MessageReactionSummary]
+
+
+class MessageReactionsSnapshot(BaseModel):
+    message_id: UUID
+    channel_id: UUID
+    reactions: list[MessageReactionSummary]
 
 
 class ChannelMessagesPage(BaseModel):

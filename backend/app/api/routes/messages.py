@@ -10,15 +10,17 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.dependencies.auth import get_current_user
-from app.db.models import Attachment, Channel, ChannelType, Message, MessageType, User
+from app.db.models import Attachment, Channel, ChannelType, Message, MessageReaction, MessageReactionKind, MessageType, User
 from app.db.session import get_db
 from app.schemas.workspace import (
     ChannelMessageSummary,
     ChannelMessagesPage,
+    MessageReactionSummary,
+    MessageReactionsSnapshot,
     MessageAttachmentSummary,
     MessageAuthorSummary,
 )
-from app.services.app_events import publish_message_created
+from app.services.app_events import publish_message_created, publish_message_reactions_updated
 from app.services.voice_access import can_view_voice_channel, get_voice_channel_access
 
 router = APIRouter(tags=["messages"])
@@ -26,6 +28,18 @@ router = APIRouter(tags=["messages"])
 DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 50
 MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024
+MESSAGE_REACTION_ORDER: tuple[MessageReactionKind, ...] = (
+    MessageReactionKind.HEART,
+    MessageReactionKind.LIKE,
+    MessageReactionKind.DISLIKE,
+    MessageReactionKind.ANGRY,
+    MessageReactionKind.CRY,
+    MessageReactionKind.CONFUSED,
+    MessageReactionKind.DISPLEASED,
+    MessageReactionKind.LAUGH,
+    MessageReactionKind.FIRE,
+    MessageReactionKind.WOW,
+)
 
 
 def _build_author_summary(user: User) -> MessageAuthorSummary:
@@ -48,7 +62,28 @@ def _build_attachment_summary(attachment: Attachment) -> MessageAttachmentSummar
     )
 
 
-def _build_message_summary(message: Message) -> ChannelMessageSummary:
+def _build_reaction_summaries(message: Message, current_user_id: UUID) -> list[MessageReactionSummary]:
+    counts_by_code: dict[str, int] = {}
+    reacted_codes: set[str] = set()
+
+    for reaction in message.reactions:
+        code = reaction.reaction.value
+        counts_by_code[code] = counts_by_code.get(code, 0) + 1
+        if reaction.user_id == current_user_id:
+            reacted_codes.add(code)
+
+    return [
+        MessageReactionSummary(
+            code=reaction_kind.value,
+            count=counts_by_code[reaction_kind.value],
+            reacted=reaction_kind.value in reacted_codes,
+        )
+        for reaction_kind in MESSAGE_REACTION_ORDER
+        if counts_by_code.get(reaction_kind.value)
+    ]
+
+
+def _build_message_summary(message: Message, current_user_id: UUID) -> ChannelMessageSummary:
     return ChannelMessageSummary(
         id=message.id,
         channel_id=message.channel_id,
@@ -58,6 +93,32 @@ def _build_message_summary(message: Message) -> ChannelMessageSummary:
         edited_at=message.edited_at,
         author=_build_author_summary(message.author),
         attachments=[_build_attachment_summary(attachment) for attachment in message.attachments],
+        reactions=_build_reaction_summaries(message, current_user_id),
+    )
+
+
+def _build_message_reactions_snapshot(message: Message, current_user_id: UUID) -> MessageReactionsSnapshot:
+    return MessageReactionsSnapshot(
+        message_id=message.id,
+        channel_id=message.channel_id,
+        reactions=_build_reaction_summaries(message, current_user_id),
+    )
+
+
+def _build_message_reactions_event_snapshot(message: Message) -> MessageReactionsSnapshot:
+    counts_by_code: dict[str, int] = {}
+    for reaction in message.reactions:
+        code = reaction.reaction.value
+        counts_by_code[code] = counts_by_code.get(code, 0) + 1
+
+    return MessageReactionsSnapshot(
+        message_id=message.id,
+        channel_id=message.channel_id,
+        reactions=[
+            MessageReactionSummary(code=reaction_kind.value, count=counts_by_code[reaction_kind.value], reacted=False)
+            for reaction_kind in MESSAGE_REACTION_ORDER
+            if counts_by_code.get(reaction_kind.value)
+        ],
     )
 
 
@@ -92,8 +153,29 @@ def _load_message(db: Session, message_id: UUID) -> Message | None:
     return db.execute(
         select(Message)
         .where(Message.id == message_id)
-        .options(joinedload(Message.author), selectinload(Message.attachments))
+        .options(
+            joinedload(Message.author),
+            joinedload(Message.channel),
+            selectinload(Message.attachments),
+            selectinload(Message.reactions),
+        )
     ).unique().scalar_one_or_none()
+
+
+def _get_accessible_message(db: Session, message_id: UUID, current_user: User) -> Message:
+    message = _load_message(db, message_id)
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сообщение не найдено")
+
+    _get_accessible_message_channel(db, message.channel_id, current_user)
+    return message
+
+
+def _parse_message_reaction_kind(reaction_code: str) -> MessageReactionKind:
+    try:
+        return MessageReactionKind(reaction_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неизвестная реакция") from exc
 
 
 @router.get("/channels/{channel_id}/messages", response_model=ChannelMessagesPage)
@@ -131,7 +213,7 @@ def list_channel_messages(
     next_before = page_rows[-1].id if has_more and page_rows else None
 
     return ChannelMessagesPage(
-        items=[_build_message_summary(message) for message in reversed(page_rows)],
+        items=[_build_message_summary(message, current_user.id) for message in reversed(page_rows)],
         has_more=has_more,
         next_before=next_before,
     )
@@ -192,9 +274,87 @@ async def create_channel_message(
     if created_message is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Сообщение не удалось загрузить")
 
-    message_summary = _build_message_summary(created_message)
+    message_summary = _build_message_summary(created_message, current_user.id)
     await publish_message_created(channel.server_id, message_summary.model_dump(mode="json"))
     return message_summary
+
+
+@router.put("/messages/{message_id}/reactions/{reaction_code}", response_model=MessageReactionsSnapshot)
+async def add_message_reaction(
+    message_id: UUID,
+    reaction_code: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MessageReactionsSnapshot:
+    message = _get_accessible_message(db, message_id, current_user)
+    reaction_kind = _parse_message_reaction_kind(reaction_code)
+
+    existing_reaction = db.execute(
+        select(MessageReaction).where(
+            MessageReaction.message_id == message.id,
+            MessageReaction.user_id == current_user.id,
+            MessageReaction.reaction == reaction_kind,
+        )
+    ).scalar_one_or_none()
+
+    if existing_reaction is None:
+        db.add(
+            MessageReaction(
+                message_id=message.id,
+                user_id=current_user.id,
+                reaction=reaction_kind,
+            )
+        )
+        db.commit()
+
+    updated_message = _load_message(db, message.id)
+    if updated_message is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось обновить реакции")
+
+    snapshot = _build_message_reactions_snapshot(updated_message, current_user.id)
+    event_snapshot = _build_message_reactions_event_snapshot(updated_message)
+    await publish_message_reactions_updated(
+        updated_message.channel.server_id,
+        updated_message.channel_id,
+        event_snapshot.model_dump(mode="json"),
+    )
+    return snapshot
+
+
+@router.delete("/messages/{message_id}/reactions/{reaction_code}", response_model=MessageReactionsSnapshot)
+async def remove_message_reaction(
+    message_id: UUID,
+    reaction_code: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MessageReactionsSnapshot:
+    message = _get_accessible_message(db, message_id, current_user)
+    reaction_kind = _parse_message_reaction_kind(reaction_code)
+
+    existing_reaction = db.execute(
+        select(MessageReaction).where(
+            MessageReaction.message_id == message.id,
+            MessageReaction.user_id == current_user.id,
+            MessageReaction.reaction == reaction_kind,
+        )
+    ).scalar_one_or_none()
+
+    if existing_reaction is not None:
+        db.delete(existing_reaction)
+        db.commit()
+
+    updated_message = _load_message(db, message.id)
+    if updated_message is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось обновить реакции")
+
+    snapshot = _build_message_reactions_snapshot(updated_message, current_user.id)
+    event_snapshot = _build_message_reactions_event_snapshot(updated_message)
+    await publish_message_reactions_updated(
+        updated_message.channel.server_id,
+        updated_message.channel_id,
+        event_snapshot.model_dump(mode="json"),
+    )
+    return snapshot
 
 
 @router.get("/attachments/{attachment_id}")

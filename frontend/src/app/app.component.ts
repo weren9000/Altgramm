@@ -12,6 +12,7 @@ import {
   AppEventsMessage,
   AppChannelsUpdatedEvent,
   AppMessageCreatedEvent,
+  AppMessageReactionsUpdatedEvent,
   AppMembersUpdatedEvent,
   AppPresenceUpdatedEvent,
   AppServerChangedEvent,
@@ -32,6 +33,9 @@ import {
   WorkspaceChannel,
   WorkspaceMessage,
   WorkspaceMessageAttachment,
+  WorkspaceMessageReaction,
+  WorkspaceMessageReactionCode,
+  WorkspaceMessageReactionsSnapshot,
   WorkspaceMember,
   WorkspaceServer,
   WorkspaceVoicePresenceChannel
@@ -212,12 +216,37 @@ interface UpdateServerIconTrigger {
   iconLabel: string;
 }
 
+interface MessageReactionOption {
+  code: WorkspaceMessageReactionCode;
+  emoji: string;
+  label: string;
+}
+
+interface MessageReactionTrigger {
+  token: string;
+  message: WorkspaceMessage;
+  reactionCode: WorkspaceMessageReactionCode;
+  remove: boolean;
+}
+
 const SESSION_STORAGE_KEY = 'tescord.session';
 const MESSAGES_PAGE_SIZE = 25;
 const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
 const MAX_INLINE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const PRESENCE_ACTIVITY_THROTTLE_MS = 30000;
 const PRESENCE_KEEPALIVE_INTERVAL_MS = 45000;
+const MESSAGE_REACTION_OPTIONS: readonly MessageReactionOption[] = [
+  { code: 'heart', emoji: '❤️', label: 'Сердечко' },
+  { code: 'like', emoji: '👍', label: 'Лайк' },
+  { code: 'dislike', emoji: '👎', label: 'Дизлайк' },
+  { code: 'angry', emoji: '😡', label: 'Гнев' },
+  { code: 'cry', emoji: '😢', label: 'Плачет' },
+  { code: 'confused', emoji: '😕', label: 'Недоумение' },
+  { code: 'displeased', emoji: '😒', label: 'Недовольство' },
+  { code: 'laugh', emoji: '😂', label: 'Смех' },
+  { code: 'fire', emoji: '🔥', label: 'Огонь' },
+  { code: 'wow', emoji: '😮', label: 'Удивление' },
+];
 const SERVER_ICON_ASSETS = [
   'Общая.png',
   'Ан-Зайлиль.png',
@@ -343,6 +372,8 @@ export class AppComponent {
   private readonly resolveVoiceRequestTrigger$ = new Subject<ResolveVoiceRequestTrigger>();
   private readonly voiceJoinRequestTrigger$ = new Subject<VoiceJoinRequestTrigger>();
   private readonly updateServerIconTrigger$ = new Subject<UpdateServerIconTrigger>();
+  private readonly messageReactionTrigger$ = new Subject<MessageReactionTrigger>();
+  private readonly pendingMessageReactionKeys = new Set<string>();
 
   @ViewChild('messageList')
   private messageListRef?: ElementRef<HTMLElement>;
@@ -377,6 +408,7 @@ export class AppComponent {
   readonly members = signal<WorkspaceMember[]>([]);
   readonly voicePresence = signal<WorkspaceVoicePresenceChannel[]>([]);
   readonly messages = signal<WorkspaceMessage[]>([]);
+  readonly messageReactionOptions = MESSAGE_REACTION_OPTIONS;
   readonly messagesHasMore = signal(false);
   readonly messagesCursor = signal<string | null>(null);
   readonly selectedServerId = signal<string | null>(null);
@@ -389,6 +421,7 @@ export class AppComponent {
   readonly selectedMemberUserId = signal<string | null>(null);
   readonly selectedVoiceMemberChannelId = signal<string | null>(null);
   readonly openedImageAttachmentId = signal<string | null>(null);
+  readonly openedMessageReactionPickerId = signal<string | null>(null);
   readonly mobilePanel = signal<MobilePanel>(null);
   readonly voiceWorkspaceTab = signal<VoiceWorkspaceTab>('chat');
   readonly messageDraft = signal('');
@@ -1225,6 +1258,31 @@ export class AppComponent {
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe();
+
+    this.messageReactionTrigger$
+      .pipe(
+        mergeMap(({ token, message, reactionCode, remove }) => {
+          const request$ = remove
+            ? this.workspaceApi.removeMessageReaction(token, message.id, reactionCode)
+            : this.workspaceApi.addMessageReaction(token, message.id, reactionCode);
+
+          return request$.pipe(
+            tap((snapshot) => {
+              this.applyMessageReactionSnapshot(snapshot);
+              this.openedMessageReactionPickerId.set(null);
+            }),
+            catchError((error) => {
+              this.messageError.set(this.extractErrorMessage(error, 'Не удалось обновить реакцию'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.pendingMessageReactionKeys.delete(this.buildMessageReactionKey(message.id, reactionCode));
+            })
+          );
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
   }
 
   private bindVoiceOwnershipPipelines(): void {
@@ -1799,6 +1857,44 @@ export class AppComponent {
     this.messageError.set(null);
     this.schedulePresenceHeartbeat(true);
     this.sendMessageTrigger$.next({ token, channelId, payload });
+  }
+
+  toggleMessageReactionPicker(messageId: string): void {
+    this.openedMessageReactionPickerId.set(
+      this.openedMessageReactionPickerId() === messageId ? null : messageId
+    );
+  }
+
+  closeMessageReactionPicker(): void {
+    this.openedMessageReactionPickerId.set(null);
+  }
+
+  reactionEmoji(code: WorkspaceMessageReactionCode): string {
+    return this.messageReactionOptions.find((option) => option.code === code)?.emoji ?? '🙂';
+  }
+
+  reactionLabel(code: WorkspaceMessageReactionCode): string {
+    return this.messageReactionOptions.find((option) => option.code === code)?.label ?? 'Реакция';
+  }
+
+  isMessageReactionPending(messageId: string, reactionCode: WorkspaceMessageReactionCode): boolean {
+    return this.pendingMessageReactionKeys.has(this.buildMessageReactionKey(messageId, reactionCode));
+  }
+
+  toggleMessageReaction(message: WorkspaceMessage, reactionCode: WorkspaceMessageReactionCode): void {
+    const token = this.session()?.access_token;
+    if (!token || this.isMessageReactionPending(message.id, reactionCode)) {
+      return;
+    }
+
+    const existingReaction = message.reactions.find((reaction) => reaction.code === reactionCode);
+    const remove = existingReaction?.reacted === true;
+    const reactionKey = this.buildMessageReactionKey(message.id, reactionCode);
+
+    this.pendingMessageReactionKeys.add(reactionKey);
+    this.messageError.set(null);
+    this.schedulePresenceHeartbeat(true);
+    this.messageReactionTrigger$.next({ token, message, reactionCode, remove });
   }
 
   downloadAttachment(attachment: WorkspaceMessageAttachment): void {
@@ -2622,6 +2718,9 @@ export class AppComponent {
       case 'message_created':
         this.handleMessageCreatedEvent(event);
         return;
+      case 'message_reactions_updated':
+        this.handleMessageReactionsUpdatedEvent(event);
+        return;
       case 'channels_updated':
         this.handleChannelsUpdatedEvent(event);
         return;
@@ -2709,6 +2808,14 @@ export class AppComponent {
     if (isNearBottom || event.message.author.id === this.currentUser()?.id) {
       this.scrollMessagesToBottom();
     }
+  }
+
+  private handleMessageReactionsUpdatedEvent(event: AppMessageReactionsUpdatedEvent): void {
+    if (event.server_id !== this.selectedServerId()) {
+      return;
+    }
+
+    this.applyMessageReactionSnapshot(event.snapshot, true);
   }
 
   private applyChannelsSnapshot(
@@ -3278,6 +3385,33 @@ export class AppComponent {
     }
   }
 
+  private applyMessageReactionSnapshot(
+    snapshot: WorkspaceMessageReactionsSnapshot,
+    preserveExistingReacted = false,
+  ): void {
+    this.messages.update((messages) =>
+      messages.map((message) =>
+        message.id === snapshot.message_id
+          ? {
+              ...message,
+              reactions: preserveExistingReacted
+                ? snapshot.reactions.map((reaction) => ({
+                    ...reaction,
+                    reacted:
+                      message.reactions.find((existingReaction) => existingReaction.code === reaction.code)?.reacted
+                      ?? reaction.reacted,
+                  }))
+                : snapshot.reactions,
+            }
+          : message
+      )
+    );
+  }
+
+  private buildMessageReactionKey(messageId: string, reactionCode: WorkspaceMessageReactionCode): string {
+    return `${messageId}:${reactionCode}`;
+  }
+
   private syncMessageAutoRefreshPolling(): void {
     this.stopMessageAutoRefreshPolling();
   }
@@ -3348,6 +3482,7 @@ export class AppComponent {
   private resetTextChannelState(): void {
     this.messages.set([]);
     this.clearAttachmentPreviews();
+    this.openedMessageReactionPickerId.set(null);
     this.messagesHasMore.set(false);
     this.messagesCursor.set(null);
     this.messagesLoading.set(false);

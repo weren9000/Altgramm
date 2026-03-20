@@ -694,6 +694,46 @@
                             }
                           </div>
                         }
+                        <div class="message-reactions">
+                          @for (reaction of message.reactions; track reaction.code) {
+                            <button
+                              class="reaction-chip"
+                              type="button"
+                              [class.reaction-chip--active]="reaction.reacted"
+                              [disabled]="isMessageReactionPending(message.id, reaction.code)"
+                              [attr.title]="reactionLabel(reaction.code)"
+                              (click)="toggleMessageReaction(message, reaction.code)"
+                            >
+                              <span class="reaction-chip__emoji">{{ reactionEmoji(reaction.code) }}</span>
+                              <span class="reaction-chip__count">{{ reaction.count }}</span>
+                            </button>
+                          }
+                          <button
+                            class="reaction-picker-toggle"
+                            type="button"
+                            [class.reaction-picker-toggle--active]="openedMessageReactionPickerId() === message.id"
+                            title="Добавить реакцию"
+                            (click)="toggleMessageReactionPicker(message.id)"
+                          >
+                            <span>🙂</span>
+                          </button>
+                        </div>
+                        @if (openedMessageReactionPickerId() === message.id) {
+                          <div class="reaction-picker">
+                            @for (option of messageReactionOptions; track option.code) {
+                              <button
+                                class="reaction-picker__option"
+                                type="button"
+                                [class.reaction-picker__option--active]="isMessageReactionPending(message.id, option.code)"
+                                [attr.title]="option.label"
+                                (click)="toggleMessageReaction(message, option.code)"
+                              >
+                                <span class="reaction-picker__emoji">{{ option.emoji }}</span>
+                                <span class="reaction-picker__label">{{ option.label }}</span>
+                              </button>
+                            }
+                          </div>
+                        }
                       </div>
                     </article>
                   }

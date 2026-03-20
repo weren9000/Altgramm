@@ -1340,23 +1340,23 @@ select {
 .message-card {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 7px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   background: transparent;
 }
 
 .message-card__avatar {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   display: grid;
   place-items: center;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--avatar-accent) 20%, rgba(255, 255, 255, 0.03));
   color: #fff7ec;
   font-weight: 700;
-  font-size: 0.78rem;
+  font-size: 0.68rem;
 }
 
 .message-card__body {
@@ -1364,14 +1364,14 @@ select {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
 }
 
 .message-card__meta {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 .message-card__author {
@@ -1379,27 +1379,30 @@ select {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
 }
 
 .message-card__author strong {
-  font-size: 0.96rem;
+  font-size: 0.86rem;
   line-height: 1.2;
 }
 
 .message-card__author span {
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   color: var(--muted);
 }
 
 .message-card__meta time {
   flex: 0 0 auto;
-  font-size: 0.76rem;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  color: var(--muted);
 }
 
 .message-card__text {
   margin: 0;
-  line-height: 1.5;
+  line-height: 1.36;
+  font-size: 0.84rem;
   color: #f1ede5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1409,7 +1412,7 @@ select {
 .composer__files {
   display: flex;
   flex-wrap: nowrap;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
   padding-bottom: 2px;
 }
@@ -1418,15 +1421,15 @@ select {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
-  padding: 9px 10px;
+  padding: 7px 8px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
   text-align: left;
   cursor: pointer;
-  max-width: 240px;
+  max-width: 220px;
 }
 
 .attachment-chip strong,
@@ -1440,14 +1443,15 @@ select {
 
 .attachment-chip small {
   color: var(--muted);
+  font-size: 0.68rem;
 }
 
 .attachment-preview {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: min(220px, 100%);
-  padding: 6px;
+  gap: 5px;
+  width: min(200px, 100%);
+  padding: 5px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
@@ -1458,7 +1462,7 @@ select {
 .attachment-preview img {
   display: block;
   width: 100%;
-  max-height: 180px;
+  max-height: 160px;
   object-fit: cover;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.02);
@@ -1476,9 +1480,9 @@ select {
 .audio-attachment {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: min(260px, 100%);
-  padding: 8px 10px;
+  gap: 6px;
+  width: min(240px, 100%);
+  padding: 7px 8px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
 }
@@ -1504,6 +1508,85 @@ select {
 .audio-attachment audio {
   width: 100%;
   height: 28px;
+}
+
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.reaction-chip,
+.reaction-picker-toggle,
+.reaction-picker__option {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 3px 8px;
+  font-size: 0.76rem;
+}
+
+.reaction-chip--active {
+  border-color: rgba(255, 159, 67, 0.4);
+  background: rgba(255, 159, 67, 0.1);
+}
+
+.reaction-chip__emoji,
+.reaction-picker__emoji {
+  line-height: 1;
+  font-size: 0.92rem;
+}
+
+.reaction-chip__count {
+  line-height: 1;
+  color: var(--muted);
+}
+
+.reaction-picker-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 0.86rem;
+}
+
+.reaction-picker-toggle--active {
+  border-color: rgba(140, 220, 255, 0.35);
+  background: rgba(140, 220, 255, 0.08);
+}
+
+.reaction-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reaction-picker__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 0.74rem;
+}
+
+.reaction-picker__option--active {
+  border-color: rgba(255, 159, 67, 0.3);
+  background: rgba(255, 159, 67, 0.08);
+}
+
+.reaction-picker__label {
+  white-space: nowrap;
 }
 
 .attachment-chip--pending {

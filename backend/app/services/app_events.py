@@ -211,6 +211,19 @@ def build_message_created_event(
     }
 
 
+def build_message_reactions_updated_event(
+    server_id: UUID | str,
+    channel_id: UUID | str,
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "type": "message_reactions_updated",
+        "server_id": _normalize_user_id(server_id),
+        "channel_id": _normalize_user_id(channel_id),
+        "snapshot": snapshot,
+    }
+
+
 def build_servers_changed_event(*, reason: str) -> dict[str, Any]:
     return {
         "type": "servers_changed",
@@ -297,6 +310,17 @@ async def publish_presence_updated(user_id: UUID | str, is_online: bool = True) 
 
 async def publish_message_created(server_id: UUID | str, message: dict[str, Any]) -> None:
     await app_event_manager.send_to_server(server_id, build_message_created_event(server_id, message))
+
+
+async def publish_message_reactions_updated(
+    server_id: UUID | str,
+    channel_id: UUID | str,
+    snapshot: dict[str, Any],
+) -> None:
+    await app_event_manager.send_to_server(
+        server_id,
+        build_message_reactions_updated_event(server_id, channel_id, snapshot),
+    )
 
 
 async def publish_servers_changed(reason: str) -> None:

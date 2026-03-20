@@ -80,6 +80,24 @@ export interface WorkspaceMessageAttachment {
   created_at: string;
 }
 
+export type WorkspaceMessageReactionCode =
+  | 'heart'
+  | 'like'
+  | 'dislike'
+  | 'angry'
+  | 'cry'
+  | 'confused'
+  | 'displeased'
+  | 'laugh'
+  | 'fire'
+  | 'wow';
+
+export interface WorkspaceMessageReaction {
+  code: WorkspaceMessageReactionCode;
+  count: number;
+  reacted: boolean;
+}
+
 export interface WorkspaceMessage {
   id: string;
   channel_id: string;
@@ -89,12 +107,19 @@ export interface WorkspaceMessage {
   edited_at: string | null;
   author: WorkspaceMessageAuthor;
   attachments: WorkspaceMessageAttachment[];
+  reactions: WorkspaceMessageReaction[];
 }
 
 export interface WorkspaceMessagePage {
   items: WorkspaceMessage[];
   has_more: boolean;
   next_before: string | null;
+}
+
+export interface WorkspaceMessageReactionsSnapshot {
+  message_id: string;
+  channel_id: string;
+  reactions: WorkspaceMessageReaction[];
 }
 
 export interface VoiceAdminChannel {
