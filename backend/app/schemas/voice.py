@@ -21,6 +21,7 @@ class VoiceAccessUserSummary(BaseModel):
     login: str
     nick: str
     full_name: str
+    is_online: bool = False
 
 
 class VoiceChannelAccessEntry(BaseModel):
@@ -29,6 +30,9 @@ class VoiceChannelAccessEntry(BaseModel):
     nick: str
     full_name: str
     role: Literal["owner", "resident", "stranger"]
+    is_online: bool = False
+    is_in_channel: bool = False
+    muted: bool = False
     owner_muted: bool
     blocked_until: datetime | None
     temporary_access_until: datetime | None

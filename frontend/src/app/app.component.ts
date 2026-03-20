@@ -109,6 +109,19 @@ interface VoiceAdminAssignmentFormModel {
   role: VoiceAccessRole;
 }
 
+type VoiceAdminStatusTone = 'neutral' | 'online' | 'active' | 'warning' | 'danger';
+
+interface VoiceAdminStatusChip {
+  label: string;
+  tone: VoiceAdminStatusTone;
+}
+
+interface VoiceAdminAccessViewModel {
+  entry: VoiceChannelAccessEntry;
+  roleLabel: string;
+  statusChips: VoiceAdminStatusChip[];
+}
+
 interface PendingVoiceJoinState {
   requestId: string;
   channelId: string;
@@ -819,6 +832,22 @@ export class AppComponent {
     }
 
     return this.voiceAccessEntriesByChannelId()[selectedChannelId] ?? [];
+  });
+  readonly voiceAdminSelectedChannelAccessView = computed<VoiceAdminAccessViewModel[]>(() =>
+    this.voiceAdminSelectedChannelAccess().map((entry) => ({
+      entry,
+      roleLabel: this.formatVoiceAccessRole(entry.role),
+      statusChips: this.buildVoiceAdminStatusChips(entry)
+    }))
+  );
+  readonly voiceAdminSelectedChannelStats = computed(() => {
+    const entries = this.voiceAdminSelectedChannelAccess();
+    return {
+      total: entries.length,
+      online: entries.filter((entry) => entry.is_online).length,
+      inChannel: entries.filter((entry) => entry.is_in_channel).length,
+      blocked: entries.filter((entry) => entry.owner_muted).length
+    };
   });
 
   readonly activeOwnerRequest = computed(() => {
@@ -2786,6 +2815,23 @@ export class AppComponent {
           : member
       )
     );
+
+    this.voiceAccessEntriesByChannelId.update((currentState) => {
+      const nextState: Record<string, VoiceChannelAccessEntry[]> = {};
+
+      for (const [channelId, entries] of Object.entries(currentState)) {
+        nextState[channelId] = entries.map((entry) =>
+          entry.user_id === event.user_id
+            ? {
+                ...entry,
+                is_online: event.is_online
+              }
+            : entry
+        );
+      }
+
+      return nextState;
+    });
   }
 
   private handleMessageCreatedEvent(event: AppMessageCreatedEvent): void {
@@ -2952,10 +2998,12 @@ export class AppComponent {
 
   private handleVoicePresenceUpdatedEvent(event: AppVoicePresenceUpdatedEvent): void {
     if (event.server_id !== this.selectedServerId()) {
+      this.patchVoiceAdminEntriesFromPresenceEvent(event);
       return;
     }
 
     this.applyVoicePresenceSnapshot(event.voice_presence);
+    this.patchVoiceAdminEntriesFromPresenceEvent(event);
   }
 
   private async refreshServersList(token: string): Promise<void> {
@@ -3802,6 +3850,117 @@ export class AppComponent {
     }
 
     return 2;
+  }
+
+  private formatVoiceAccessRole(role: VoiceAccessRole): string {
+    if (role === 'owner') {
+      return 'Владелец';
+    }
+
+    if (role === 'resident') {
+      return 'Житель';
+    }
+
+    return 'Чужак';
+  }
+
+  buildVoiceAdminStatusChips(entry: VoiceChannelAccessEntry): VoiceAdminStatusChip[] {
+    const chips: VoiceAdminStatusChip[] = [
+      {
+        label: this.formatVoiceAccessRole(entry.role),
+        tone: 'neutral'
+      },
+      {
+        label: entry.is_online ? 'Онлайн' : 'Офлайн',
+        tone: entry.is_online ? 'online' : 'neutral'
+      }
+    ];
+
+    if (entry.is_in_channel) {
+      chips.push({
+        label: entry.owner_muted ? 'В канале · заглушен' : entry.muted ? 'В канале · микрофон выкл.' : 'В канале',
+        tone: entry.owner_muted ? 'danger' : entry.muted ? 'warning' : 'active'
+      });
+    }
+
+    if (!entry.is_in_channel && entry.owner_muted) {
+      chips.push({
+        label: 'Микрофон заблокирован',
+        tone: 'danger'
+      });
+    }
+
+    if (entry.temporary_access_until) {
+      chips.push({
+        label: `Впущен до ${this.formatShortDateTime(entry.temporary_access_until)}`,
+        tone: 'active'
+      });
+    }
+
+    if (entry.blocked_until) {
+      chips.push({
+        label: `Блок до ${this.formatShortDateTime(entry.blocked_until)}`,
+        tone: 'warning'
+      });
+    }
+
+    return chips;
+  }
+
+  private formatShortDateTime(value: string): string {
+    const timestamp = Date.parse(value);
+    if (Number.isNaN(timestamp)) {
+      return value;
+    }
+
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date(timestamp));
+  }
+
+  private patchVoiceAdminEntriesFromPresenceEvent(event: AppVoicePresenceUpdatedEvent): void {
+    const channelIdsForServer = new Set(
+      this.voiceAdminChannels()
+        .filter((channel) => channel.server_id === event.server_id)
+        .map((channel) => channel.channel_id)
+    );
+
+    if (!channelIdsForServer.size) {
+      return;
+    }
+
+    const participantsByChannelId = new Map(
+      event.voice_presence.map((channel) => [
+        channel.channel_id,
+        new Map(channel.participants.map((participant) => [participant.user_id, participant]))
+      ])
+    );
+
+    this.voiceAccessEntriesByChannelId.update((currentState) => {
+      const nextState = { ...currentState };
+
+      for (const [channelId, entries] of Object.entries(currentState)) {
+        if (!channelIdsForServer.has(channelId)) {
+          continue;
+        }
+
+        const participantsByUserId = participantsByChannelId.get(channelId) ?? new Map();
+        nextState[channelId] = entries.map((entry) => {
+          const participant = participantsByUserId.get(entry.user_id);
+          return {
+            ...entry,
+            is_in_channel: Boolean(participant),
+            muted: participant?.muted ?? false,
+            owner_muted: participant?.owner_muted ?? entry.owner_muted
+          };
+        });
+      }
+
+      return nextState;
+    });
   }
 
   formatMessageTime(value: string): string {

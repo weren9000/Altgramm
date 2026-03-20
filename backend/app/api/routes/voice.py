@@ -42,6 +42,7 @@ from app.services.app_events import (
     publish_voice_request_resolved,
 )
 from app.services.default_tavern import is_default_tavern_channel
+from app.services.site_presence import site_presence_manager
 from app.services.voice_access import (
     build_voice_join_gate,
     block_stranger_access,
@@ -163,6 +164,9 @@ def _build_voice_access_entry(access: VoiceChannelAccess, user: User) -> VoiceCh
         nick=user.username,
         full_name=user.display_name,
         role=access.role.value,
+        is_online=False,
+        is_in_channel=False,
+        muted=False,
         owner_muted=access.owner_muted,
         blocked_until=access.blocked_until,
         temporary_access_until=access.temporary_access_until,
@@ -226,7 +230,7 @@ def _ensure_voice_channel_manager(db: Session, channel: Channel, current_user: U
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="У вас нет прав на управление этим голосовым каналом")
 
 
-def _load_channel_access_entries(db: Session, channel_id: UUID) -> list[VoiceChannelAccessEntry]:
+async def _load_channel_access_entries(db: Session, channel_id: UUID) -> list[VoiceChannelAccessEntry]:
     rows = db.execute(
         select(VoiceChannelAccess, User)
         .join(User, User.id == VoiceChannelAccess.user_id)
@@ -237,9 +241,43 @@ def _load_channel_access_entries(db: Session, channel_id: UUID) -> list[VoiceCha
         )
     ).all()
 
-    entries = [_build_voice_access_entry(access, user) for access, user in rows]
+    online_user_ids = site_presence_manager.online_user_ids([user.id for _, user in rows])
+    channel_snapshot = await voice_signaling_manager.snapshot_rooms({str(channel_id)})
+    participants = channel_snapshot.get(str(channel_id), [])
+    participants_by_user_id = {
+        UUID(str(participant["user_id"])): participant
+        for participant in participants
+    }
+
+    entries = []
+    for access, user in rows:
+        participant = participants_by_user_id.get(user.id)
+        entries.append(
+            VoiceChannelAccessEntry(
+                user_id=user.id,
+                login=user.email,
+                nick=user.username,
+                full_name=user.display_name,
+                role=access.role.value,
+                is_online=user.id in online_user_ids,
+                is_in_channel=participant is not None,
+                muted=bool(participant["muted"]) if participant is not None else False,
+                owner_muted=bool(participant.get("owner_muted", access.owner_muted)) if participant is not None else access.owner_muted,
+                blocked_until=access.blocked_until,
+                temporary_access_until=access.temporary_access_until,
+            )
+        )
+
     role_order = {"owner": 0, "resident": 1, "stranger": 2}
-    return sorted(entries, key=lambda item: (role_order.get(item.role, 99), item.nick.casefold()))
+    return sorted(
+        entries,
+        key=lambda item: (
+            role_order.get(item.role, 99),
+            0 if item.is_in_channel else 1,
+            0 if item.is_online else 1,
+            item.nick.casefold(),
+        ),
+    )
 
 
 def _upsert_voice_access(
@@ -304,26 +342,28 @@ def list_all_users_for_voice_admin(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Только администратор может просматривать пользователей")
 
     users = db.execute(select(User).order_by(User.username)).scalars().all()
+    online_user_ids = site_presence_manager.online_user_ids([user.id for user in users])
     return [
         VoiceAccessUserSummary(
             user_id=user.id,
             login=user.email,
             nick=user.username,
             full_name=user.display_name,
+            is_online=user.id in online_user_ids,
         )
         for user in users
     ]
 
 
 @router.get("/channels/{channel_id}/access", response_model=list[VoiceChannelAccessEntry])
-def list_voice_channel_access(
+async def list_voice_channel_access(
     channel_id: UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[VoiceChannelAccessEntry]:
     channel = _get_voice_channel_or_404(db, channel_id)
     _ensure_voice_channel_manager(db, channel, current_user)
-    return _load_channel_access_entries(db, channel.id)
+    return await _load_channel_access_entries(db, channel.id)
 
 
 @router.put("/channels/{channel_id}/access/{user_id}", response_model=list[VoiceChannelAccessEntry])
@@ -361,14 +401,14 @@ async def update_voice_channel_access(
 
         _upsert_voice_access(db, channel, target_user, VoiceAccessRole.OWNER)
         db.commit()
-        entries = _load_channel_access_entries(db, channel.id)
+        entries = await _load_channel_access_entries(db, channel.id)
         await publish_channels_updated(channel.server_id, reason="voice_access_changed")
         await publish_voice_presence_updated(channel.server_id)
         return entries
 
     if payload.role is None:
         if current_access is None:
-            return _load_channel_access_entries(db, channel.id)
+            return await _load_channel_access_entries(db, channel.id)
 
         if current_access.role == VoiceAccessRole.OWNER:
             raise HTTPException(
@@ -378,7 +418,7 @@ async def update_voice_channel_access(
 
         db.delete(current_access)
         db.commit()
-        entries = _load_channel_access_entries(db, channel.id)
+        entries = await _load_channel_access_entries(db, channel.id)
         await publish_channels_updated(channel.server_id, reason="voice_access_changed")
         await publish_voice_presence_updated(channel.server_id)
         return entries
@@ -395,7 +435,7 @@ async def update_voice_channel_access(
 
     _upsert_voice_access(db, channel, target_user, next_role)
     db.commit()
-    entries = _load_channel_access_entries(db, channel.id)
+    entries = await _load_channel_access_entries(db, channel.id)
     await publish_channels_updated(channel.server_id, reason="voice_access_changed")
     await publish_voice_presence_updated(channel.server_id)
     return entries
@@ -612,7 +652,7 @@ async def kick_voice_participant(
     await voice_signaling_manager.disconnect_user_sessions(str(channel.id), str(user_id))
     await publish_channels_updated(channel.server_id, reason="voice_access_changed")
     await publish_voice_presence_updated(channel.server_id)
-    return _load_channel_access_entries(db, channel.id)
+    return await _load_channel_access_entries(db, channel.id)
 
 
 @router.put("/channels/{channel_id}/participants/{user_id}/owner-mute", response_model=list[VoiceChannelAccessEntry])
@@ -638,7 +678,7 @@ async def update_voice_participant_owner_mute(
 
     await voice_signaling_manager.update_owner_mute_state(str(channel.id), str(user_id), access.owner_muted)
     await publish_voice_presence_updated(channel.server_id)
-    return _load_channel_access_entries(db, channel.id)
+    return await _load_channel_access_entries(db, channel.id)
 
 
 @router.websocket("/channels/{channel_id}/ws")

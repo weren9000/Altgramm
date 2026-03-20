@@ -1122,6 +1122,10 @@
 
       <div class="modal__body voice-admin">
         <div class="voice-admin__channels">
+          <div class="voice-admin__channels-head">
+            <span>Каналы</span>
+            <strong>{{ voiceAdminChannels().length }}</strong>
+          </div>
           @if (voiceAdminChannels().length) {
             @for (channel of voiceAdminChannels(); track channel.channel_id) {
               <button
@@ -1130,9 +1134,14 @@
                 type="button"
                 (click)="selectVoiceAdminChannel(channel.channel_id)"
               >
-                <strong>{{ channel.channel_name }}</strong>
-                <small>{{ channel.server_name }}</small>
-                <small>Владелец: {{ channel.owner_nick ?? 'не назначен' }}</small>
+                <strong class="voice-admin__channel-name">{{ channel.channel_name }}</strong>
+                <small class="voice-admin__channel-meta">{{ channel.server_name }}</small>
+                <small
+                  class="voice-admin__channel-owner"
+                  [class.voice-admin__channel-owner--empty]="!channel.owner_nick"
+                >
+                  {{ channel.owner_nick ? 'Владелец: ' + channel.owner_nick : 'Владелец не назначен' }}
+                </small>
               </button>
             }
           } @else {
@@ -1144,9 +1153,15 @@
 
         <div class="voice-admin__content">
           @if (voiceAdminSelectedChannel(); as selectedChannel) {
-            <div class="voice-admin__section">
+            <div class="voice-admin__section voice-admin__hero">
               <h4>{{ selectedChannel.channel_name }}</h4>
               <small>{{ selectedChannel.server_name }}</small>
+              <div class="voice-admin__chips">
+                <span class="voice-admin__chip">{{ voiceAdminSelectedChannelStats().total }} доступов</span>
+                <span class="voice-admin__chip voice-admin__chip--online">{{ voiceAdminSelectedChannelStats().online }} онлайн</span>
+                <span class="voice-admin__chip voice-admin__chip--active">{{ voiceAdminSelectedChannelStats().inChannel }} в канале</span>
+                <span class="voice-admin__chip voice-admin__chip--danger">{{ voiceAdminSelectedChannelStats().blocked }} заглушено</span>
+              </div>
             </div>
 
             <div class="voice-admin__section voice-admin__form">
@@ -1154,7 +1169,9 @@
                 <span>Пользователь</span>
                 <select [(ngModel)]="voiceAdminAssignmentForm.userId" name="voice_admin_user">
                   @for (user of voiceAdminUsers(); track user.user_id) {
-                    <option [value]="user.user_id">{{ user.nick }} · {{ user.full_name }}</option>
+                    <option [value]="user.user_id">
+                      {{ user.nick }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}
+                    </option>
                   }
                 </select>
               </label>
@@ -1174,21 +1191,72 @@
             </div>
 
             <div class="voice-admin__section">
-              @if (voiceAdminSelectedChannelAccess().length) {
+              <div class="voice-admin__section-head">
+                <strong>Доступы</strong>
+                <small>Статусы и роли по выбранному каналу</small>
+              </div>
+
+              @if (voiceAdminSelectedChannelAccessView().length) {
                 <div class="voice-admin__list">
-                  @for (entry of voiceAdminSelectedChannelAccess(); track entry.user_id) {
+                  @for (view of voiceAdminSelectedChannelAccessView(); track view.entry.user_id) {
                     <div class="voice-admin__row">
                       <div class="voice-admin__meta">
-                        <strong>{{ entry.nick }}</strong>
-                        <small>{{ entry.full_name }}</small>
+                        <strong>{{ view.entry.nick }}</strong>
+                        <small>{{ view.entry.full_name }}</small>
+                      </div>
+
+                      <div class="voice-admin__chips">
+                        @for (chip of view.statusChips; track chip.label) {
+                          <span
+                            class="voice-admin__chip"
+                            [class.voice-admin__chip--online]="chip.tone === 'online'"
+                            [class.voice-admin__chip--active]="chip.tone === 'active'"
+                            [class.voice-admin__chip--warning]="chip.tone === 'warning'"
+                            [class.voice-admin__chip--danger]="chip.tone === 'danger'"
+                          >
+                            {{ chip.label }}
+                          </span>
+                        }
                       </div>
 
                       <div class="voice-admin__actions">
-                        <button class="secondary-button" type="button" (click)="applyVoiceAdminRole(entry.user_id, 'owner')" [disabled]="voiceAdminSaving()">Вл.</button>
-                        <button class="secondary-button" type="button" (click)="applyVoiceAdminRole(entry.user_id, 'resident')" [disabled]="voiceAdminSaving()">Жит.</button>
-                        <button class="secondary-button" type="button" (click)="applyVoiceAdminRole(entry.user_id, 'stranger')" [disabled]="voiceAdminSaving()">Чуж.</button>
-                        @if (entry.role !== 'owner') {
-                          <button class="secondary-button" type="button" (click)="removeVoiceAdminAccess(entry.user_id)" [disabled]="voiceAdminSaving()">Убрать</button>
+                        <button
+                          class="secondary-button"
+                          type="button"
+                          title="Назначить владельцем"
+                          (click)="applyVoiceAdminRole(view.entry.user_id, 'owner')"
+                          [disabled]="voiceAdminSaving()"
+                        >
+                          Влад.
+                        </button>
+                        <button
+                          class="secondary-button"
+                          type="button"
+                          title="Сделать жителем"
+                          (click)="applyVoiceAdminRole(view.entry.user_id, 'resident')"
+                          [disabled]="voiceAdminSaving()"
+                        >
+                          Житель
+                        </button>
+                        <button
+                          class="secondary-button"
+                          type="button"
+                          title="Сделать чужаком"
+                          (click)="applyVoiceAdminRole(view.entry.user_id, 'stranger')"
+                          [disabled]="voiceAdminSaving()"
+                        >
+                          Чужак
+                        </button>
+                        @if (view.entry.role !== 'owner') {
+                          <button
+                            class="secondary-button"
+                            type="button"
+                            title="Убрать доступ"
+                            (click)="removeVoiceAdminAccess(view.entry.user_id)"
+                            [disabled]="voiceAdminSaving()"
+                          >
+                            Убрать
+                          </button>
                         }
                       </div>
                     </div>

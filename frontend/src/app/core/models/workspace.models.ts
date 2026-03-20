@@ -136,6 +136,7 @@ export interface VoiceAdminUser {
   login: string;
   nick: string;
   full_name: string;
+  is_online: boolean;
 }
 
 export interface VoiceChannelAccessEntry {
@@ -144,6 +145,9 @@ export interface VoiceChannelAccessEntry {
   nick: string;
   full_name: string;
   role: 'owner' | 'resident' | 'stranger';
+  is_online: boolean;
+  is_in_channel: boolean;
+  muted: boolean;
   owner_muted: boolean;
   blocked_until: string | null;
   temporary_access_until: string | null;
