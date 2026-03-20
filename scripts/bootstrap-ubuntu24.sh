@@ -184,17 +184,17 @@ ln -sf /etc/nginx/sites-available/tescord /etc/nginx/sites-enabled/tescord
 
 cat > /etc/turnserver.conf <<EOF
 listening-port=3478
+listening-ip=${SERVER_HOST}
+relay-ip=${SERVER_HOST}
+external-ip=${SERVER_HOST}
 fingerprint
 lt-cred-mech
 realm=${APP_DOMAIN}
 server-name=${APP_DOMAIN}
-external-ip=${SERVER_HOST}
 user=tescordturn:${TURN_PASSWORD}
 total-quota=100
 bps-capacity=0
 stale-nonce=600
-no-loopback-peers
-no-multicast-peers
 no-cli
 min-port=49160
 max-port=49200
