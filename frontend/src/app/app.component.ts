@@ -165,6 +165,7 @@ interface LoadAttachmentPreviewTrigger {
   token: string;
   attachment: WorkspaceMessageAttachment;
   openImageAfterLoad?: boolean;
+  reportErrors?: boolean;
 }
 
 interface VoiceMemberRoleTrigger {
@@ -1146,6 +1147,7 @@ export class AppComponent {
               }
 
               this.messages.update((messages) => this.mergeMessagesChronologically([...messages, message]));
+              this.preloadInlineImagePreviews([message]);
               this.scrollMessagesToBottom();
             }),
             catchError((error) => {
@@ -1185,7 +1187,7 @@ export class AppComponent {
 
     this.loadAttachmentPreviewTrigger$
       .pipe(
-        mergeMap(({ token, attachment, openImageAfterLoad }) =>
+        mergeMap(({ token, attachment, openImageAfterLoad, reportErrors }) =>
           this.workspaceApi.downloadAttachment(token, attachment.id).pipe(
             tap((blob) => {
               const objectUrl = URL.createObjectURL(blob);
@@ -2702,6 +2704,7 @@ export class AppComponent {
       !listElement || listElement.scrollHeight - listElement.scrollTop - listElement.clientHeight <= 80;
 
     this.messages.update((messages) => this.mergeMessagesChronologically([...messages, event.message]));
+    this.preloadInlineImagePreviews([event.message]);
 
     if (isNearBottom || event.message.author.id === this.currentUser()?.id) {
       this.scrollMessagesToBottom();
@@ -3193,6 +3196,8 @@ export class AppComponent {
             this.messages.set(page.items);
           }
 
+          this.preloadInlineImagePreviews(page.items);
+
           this.messagesHasMore.set(page.has_more);
           this.messagesCursor.set(page.next_before);
           this.messagesLoading.set(false);
@@ -3261,6 +3266,18 @@ export class AppComponent {
     });
   }
 
+  private preloadInlineImagePreviews(messages: WorkspaceMessage[]): void {
+    for (const message of messages) {
+      for (const attachment of message.attachments) {
+        if (!this.isInlineImageAttachment(attachment)) {
+          continue;
+        }
+
+        this.requestAttachmentPreview(attachment);
+      }
+    }
+  }
+
   private syncMessageAutoRefreshPolling(): void {
     this.stopMessageAutoRefreshPolling();
   }
@@ -3302,6 +3319,7 @@ export class AppComponent {
           const existingMessages = this.messages();
           if (!existingMessages.length) {
             this.messages.set(page.items);
+            this.preloadInlineImagePreviews(page.items);
             if (isNearBottom) {
               this.scrollMessagesToBottom();
             }
@@ -3315,6 +3333,7 @@ export class AppComponent {
           }
 
           this.messages.set(this.mergeMessagesChronologically([...existingMessages, ...page.items]));
+          this.preloadInlineImagePreviews(newItems);
 
           if (isNearBottom) {
             this.scrollMessagesToBottom();
