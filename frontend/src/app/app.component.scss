@@ -112,7 +112,7 @@ select {
 
 .shell {
   display: grid;
-  grid-template-columns: 104px 280px minmax(0, 1fr) 320px;
+  grid-template-columns: 220px 280px minmax(0, 1fr) 320px;
   gap: var(--space);
   position: relative;
   height: 100dvh;
@@ -498,8 +498,8 @@ select {
   min-height: 58px;
   padding: 10px;
   color: inherit;
-  justify-content: center;
-  text-align: center;
+  justify-content: flex-start;
+  text-align: left;
   cursor: pointer;
   transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
 }
@@ -536,7 +536,17 @@ select {
 }
 
 .server-token__name {
-  display: none;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .server-token--active {
@@ -2049,7 +2059,7 @@ select {
 
 @media (max-width: 1360px) {
   .shell {
-    grid-template-columns: 96px 252px minmax(0, 1fr) 280px;
+    grid-template-columns: 200px 252px minmax(0, 1fr) 280px;
   }
 }
 
@@ -2161,23 +2171,8 @@ select {
     transform: translateX(0);
   }
 
-  .server-token {
-    justify-content: flex-start;
-    text-align: left;
-  }
-
   .server-token__name {
-    display: block;
-    flex: 1 1 auto;
-    min-width: 0;
-    color: var(--text);
     font-size: 0.88rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    text-transform: none;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .mobile-panel-head {
