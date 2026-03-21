@@ -58,6 +58,7 @@ class MessageReactionKind(str, enum.Enum):
     LAUGH = "laugh"
     FIRE = "fire"
     WOW = "wow"
+    PRAYING_CAT = "praying_cat"
 
 
 class TimestampMixin:

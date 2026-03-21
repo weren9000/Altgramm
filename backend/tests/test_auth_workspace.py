@@ -989,3 +989,32 @@ def test_can_add_and_remove_message_reactions() -> None:
     remove_snapshot = remove_reaction_response.json()
     assert remove_snapshot["message_id"] == message_id
     assert remove_snapshot["reactions"] == []
+
+
+def test_can_add_praying_cat_message_reaction() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        token = login_admin_user(client)
+        group, channel = create_temp_text_channel(client, token, suffix)
+
+        try:
+            create_message_response = client.post(
+                f"/api/channels/{channel['id']}/messages",
+                headers={"Authorization": f"Bearer {token}"},
+                data={"content": "praying-cat-target"},
+            )
+            assert create_message_response.status_code == 201
+            message_id = create_message_response.json()["id"]
+
+            add_reaction_response = client.put(
+                f"/api/messages/{message_id}/reactions/praying_cat",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert add_reaction_response.status_code == 200
+        finally:
+            delete_server(group["id"])
+
+    add_snapshot = add_reaction_response.json()
+    assert add_snapshot["message_id"] == message_id
+    assert add_snapshot["reactions"] == [{"code": "praying_cat", "count": 1, "reacted": True}]

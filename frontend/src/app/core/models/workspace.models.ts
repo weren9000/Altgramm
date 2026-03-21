@@ -91,7 +91,8 @@ export type WorkspaceMessageReactionCode =
   | 'displeased'
   | 'laugh'
   | 'fire'
-  | 'wow';
+  | 'wow'
+  | 'praying_cat';
 
 export interface WorkspaceMessageReaction {
   code: WorkspaceMessageReactionCode;

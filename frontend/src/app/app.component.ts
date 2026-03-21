@@ -231,7 +231,8 @@ interface UpdateServerIconTrigger {
 
 interface MessageReactionOption {
   code: WorkspaceMessageReactionCode;
-  emoji: string;
+  emoji?: string;
+  assetPath?: string;
   label: string;
 }
 
@@ -259,6 +260,7 @@ const MESSAGE_REACTION_OPTIONS: readonly MessageReactionOption[] = [
   { code: 'laugh', emoji: '😂', label: 'Смех' },
   { code: 'fire', emoji: '🔥', label: 'Огонь' },
   { code: 'wow', emoji: '😮', label: 'Удивление' },
+  { code: 'praying_cat', assetPath: '/assets/The praying cat.png', label: 'Молящийся кот' },
 ];
 const SERVER_ICON_ASSETS = [
   'Общая.png',
@@ -1907,6 +1909,10 @@ export class AppComponent {
 
   reactionEmoji(code: WorkspaceMessageReactionCode): string {
     return this.messageReactionOptions.find((option) => option.code === code)?.emoji ?? '🙂';
+  }
+
+  reactionAssetPath(code: WorkspaceMessageReactionCode): string | null {
+    return this.messageReactionOptions.find((option) => option.code === code)?.assetPath ?? null;
   }
 
   reactionLabel(code: WorkspaceMessageReactionCode): string {

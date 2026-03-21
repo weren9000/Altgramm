@@ -39,6 +39,7 @@ MESSAGE_REACTION_ORDER: tuple[MessageReactionKind, ...] = (
     MessageReactionKind.LAUGH,
     MessageReactionKind.FIRE,
     MessageReactionKind.WOW,
+    MessageReactionKind.PRAYING_CAT,
 )
 
 

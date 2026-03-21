@@ -1546,6 +1546,14 @@ select {
   font-size: 0.92rem;
 }
 
+.reaction-chip__emoji-image,
+.reaction-picker__emoji-image {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
 .reaction-chip__count {
   line-height: 1;
   color: var(--muted);

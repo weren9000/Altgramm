@@ -704,7 +704,15 @@
                               [attr.title]="reactionLabel(reaction.code)"
                               (click)="toggleMessageReaction(message, reaction.code)"
                             >
-                              <span class="reaction-chip__emoji">{{ reactionEmoji(reaction.code) }}</span>
+                              @if (reactionAssetPath(reaction.code); as assetPath) {
+                                <img
+                                  class="reaction-chip__emoji-image"
+                                  [src]="assetPath"
+                                  [alt]="reactionLabel(reaction.code)"
+                                />
+                              } @else {
+                                <span class="reaction-chip__emoji">{{ reactionEmoji(reaction.code) }}</span>
+                              }
                               <span class="reaction-chip__count">{{ reaction.count }}</span>
                             </button>
                           }
@@ -728,7 +736,15 @@
                                 [attr.title]="option.label"
                                 (click)="toggleMessageReaction(message, option.code)"
                               >
-                                <span class="reaction-picker__emoji">{{ option.emoji }}</span>
+                                @if (option.assetPath) {
+                                  <img
+                                    class="reaction-picker__emoji-image"
+                                    [src]="option.assetPath"
+                                    [alt]="option.label"
+                                  />
+                                } @else {
+                                  <span class="reaction-picker__emoji">{{ option.emoji }}</span>
+                                }
                                 <span class="reaction-picker__label">{{ option.label }}</span>
                               </button>
                             }
