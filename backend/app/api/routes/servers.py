@@ -97,6 +97,11 @@ def _build_voice_channel_presence_summary(
                 user_id=UUID(str(participant["user_id"])),
                 nick=str(participant["nick"]),
                 full_name=str(participant["full_name"]),
+                character_name=(
+                    str(participant["character_name"])
+                    if participant.get("character_name") is not None
+                    else None
+                ),
                 muted=bool(participant["muted"]),
                 owner_muted=bool(participant.get("owner_muted", False)),
             )

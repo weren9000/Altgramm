@@ -753,6 +753,7 @@ export class AppComponent {
           user_id: participant.user_id,
           nick: participant.nick,
           full_name: participant.full_name,
+          character_name: participant.character_name,
           muted: participant.muted,
           owner_muted: participant.owner_muted,
           speaking: false,
@@ -1325,10 +1326,11 @@ export class AppComponent {
           this.workspaceApi.updateVoiceChannelAccess(token, channelId, member.userId, role).pipe(
             tap((entries) => {
               this.setVoiceChannelAccessEntries(channelId, entries);
+              const memberName = this.displayCharacterName(member.characterName, member.nick);
               this.managementSuccess.set(
                 role === 'resident'
-                  ? `${member.nick} теперь житель канала`
-                  : `${member.nick} теперь чужак канала`
+                  ? `${memberName} теперь житель канала`
+                  : `${memberName} теперь чужак канала`
               );
             }),
             catchError((error) => {
@@ -1350,7 +1352,7 @@ export class AppComponent {
           this.workspaceApi.kickVoiceParticipant(token, channelId, member.userId).pipe(
             tap((entries) => {
               this.setVoiceChannelAccessEntries(channelId, entries);
-              this.managementSuccess.set(`${member.nick} выгнан из канала на 5 минут`);
+              this.managementSuccess.set(`${this.displayCharacterName(member.characterName, member.nick)} выгнан из канала на 5 минут`);
             }),
             catchError((error) => {
               this.managementError.set(this.extractErrorMessage(error, 'Не удалось выгнать участника'));
@@ -1371,10 +1373,11 @@ export class AppComponent {
           this.workspaceApi.updateVoiceParticipantOwnerMute(token, channelId, member.userId, nextOwnerMuted).pipe(
             tap((entries) => {
               this.setVoiceChannelAccessEntries(channelId, entries);
+              const memberName = this.displayCharacterName(member.characterName, member.nick);
               this.managementSuccess.set(
                 nextOwnerMuted
-                  ? `${member.nick}: микрофон заблокирован владельцем`
-                  : `${member.nick}: блокировка микрофона снята`
+                  ? `${memberName}: микрофон заблокирован владельцем`
+                  : `${memberName}: блокировка микрофона снята`
               );
             }),
             catchError((error) => {
@@ -3834,6 +3837,25 @@ export class AppComponent {
 
   private formatOnlineStatus(isOnline: boolean): string {
     return isOnline ? 'Онлайн' : 'Офлайн';
+  }
+
+  displayCharacterName(characterName: string | null | undefined, nick: string): string {
+    const normalizedCharacterName = characterName?.trim();
+    return normalizedCharacterName ? normalizedCharacterName : nick;
+  }
+
+  displayCharacterInitials(characterName: string | null | undefined, nick: string): string {
+    const label = this.displayCharacterName(characterName, nick).trim();
+    if (!label) {
+      return '--';
+    }
+
+    const parts = label.split(/\s+/u).filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
+    }
+
+    return label.slice(0, 2).toUpperCase();
   }
 
   private getOnlineWeight(isOnline: boolean): number {

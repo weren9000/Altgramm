@@ -14,6 +14,7 @@ class VoiceParticipant:
     user_id: str
     nick: str
     full_name: str
+    character_name: str | None
     muted: bool = False
     owner_muted: bool = False
 
@@ -23,6 +24,7 @@ class VoiceParticipant:
             "user_id": self.user_id,
             "nick": self.nick,
             "full_name": self.full_name,
+            "character_name": self.character_name,
             "muted": self.muted,
             "owner_muted": self.owner_muted,
         }
@@ -47,6 +49,7 @@ class VoiceSignalingManager:
         user_id: str,
         nick: str,
         full_name: str,
+        character_name: str | None,
         owner_muted: bool = False,
     ) -> VoiceParticipant:
         participant = VoiceParticipant(
@@ -54,6 +57,7 @@ class VoiceSignalingManager:
             user_id=user_id,
             nick=nick,
             full_name=full_name,
+            character_name=character_name,
             owner_muted=owner_muted,
         )
 

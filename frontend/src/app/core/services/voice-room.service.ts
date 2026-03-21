@@ -8,6 +8,7 @@ export interface VoiceParticipant {
   user_id: string;
   nick: string;
   full_name: string;
+  character_name: string | null;
   muted: boolean;
   owner_muted: boolean;
   speaking: boolean;
@@ -76,6 +77,7 @@ interface RemoteVoiceParticipant {
   user_id: string;
   nick: string;
   full_name: string;
+  character_name: string | null;
   muted: boolean;
   owner_muted: boolean;
 }
@@ -248,6 +250,7 @@ export class VoiceRoomService {
         user_id: currentUser.id,
         nick: currentUser.nick,
         full_name: currentUser.full_name,
+        character_name: currentUser.character_name,
         muted: false,
         owner_muted: false,
         speaking: false,
@@ -1017,6 +1020,7 @@ export class VoiceRoomService {
                 ...entry,
                 nick: participant.nick,
                 full_name: participant.full_name,
+                character_name: participant.character_name,
                 muted: participant.muted,
                 owner_muted: participant.owner_muted
               }

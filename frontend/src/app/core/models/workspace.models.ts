@@ -43,6 +43,7 @@ export interface WorkspaceVoicePresenceParticipant {
   user_id: string;
   nick: string;
   full_name: string;
+  character_name: string | null;
   muted: boolean;
   owner_muted: boolean;
 }
@@ -129,6 +130,7 @@ export interface VoiceAdminChannel {
   channel_name: string;
   owner_user_id: string | null;
   owner_nick: string | null;
+  owner_character_name: string | null;
 }
 
 export interface VoiceAdminUser {
@@ -136,6 +138,7 @@ export interface VoiceAdminUser {
   login: string;
   nick: string;
   full_name: string;
+  character_name: string | null;
   is_online: boolean;
 }
 
@@ -144,6 +147,7 @@ export interface VoiceChannelAccessEntry {
   login: string;
   nick: string;
   full_name: string;
+  character_name: string | null;
   role: 'owner' | 'resident' | 'stranger';
   is_online: boolean;
   is_in_channel: boolean;
@@ -160,6 +164,7 @@ export interface VoiceJoinRequestSummary {
   requester_user_id: string;
   requester_nick: string;
   requester_full_name: string;
+  requester_character_name: string | null;
   status: 'pending' | 'allowed' | 'resident' | 'rejected' | 'cancelled';
   created_at: string;
   resolved_at: string | null;

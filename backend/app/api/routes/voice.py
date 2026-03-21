@@ -154,6 +154,7 @@ def _build_voice_channel_catalog_item(
         channel_name=channel.name,
         owner_user_id=owner_access.user_id if owner_access is not None else None,
         owner_nick=owner_user.username if owner_user is not None else None,
+        owner_character_name=owner_user.bio if owner_user is not None else None,
     )
 
 
@@ -163,6 +164,7 @@ def _build_voice_access_entry(access: VoiceChannelAccess, user: User) -> VoiceCh
         login=user.email,
         nick=user.username,
         full_name=user.display_name,
+        character_name=user.bio,
         role=access.role.value,
         is_online=False,
         is_in_channel=False,
@@ -192,6 +194,7 @@ def _build_voice_join_request_summary(
         requester_user_id=requester.id,
         requester_nick=requester.username,
         requester_full_name=requester.display_name,
+        requester_character_name=requester.bio,
         status=request.status.value,
         created_at=request.created_at,
         resolved_at=request.resolved_at,
@@ -258,6 +261,7 @@ async def _load_channel_access_entries(db: Session, channel_id: UUID) -> list[Vo
                 login=user.email,
                 nick=user.username,
                 full_name=user.display_name,
+                character_name=user.bio,
                 role=access.role.value,
                 is_online=user.id in online_user_ids,
                 is_in_channel=participant is not None,
@@ -349,6 +353,7 @@ def list_all_users_for_voice_admin(
             login=user.email,
             nick=user.username,
             full_name=user.display_name,
+            character_name=user.bio,
             is_online=user.id in online_user_ids,
         )
         for user in users
@@ -733,6 +738,7 @@ async def connect_to_voice_channel(websocket: WebSocket, channel_id: UUID) -> No
             user_id=str(current_user.id),
             nick=current_user.username,
             full_name=current_user.display_name,
+            character_name=current_user.bio,
             owner_muted=bool(access.owner_muted),
         )
         await publish_voice_presence_updated(channel.server_id)

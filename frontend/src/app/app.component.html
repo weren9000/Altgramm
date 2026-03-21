@@ -318,7 +318,7 @@
                       [title]="voiceStateIconAlt(participant)"
                     />
                     <div class="voice-roster__meta">
-                      <span class="voice-roster__name">{{ participant.nick }}</span>
+                      <span class="voice-roster__name">{{ displayCharacterName(participant.character_name, participant.nick) }}</span>
                     </div>
                   </button>
                 }
@@ -383,7 +383,7 @@
                       [title]="voiceStateIconAlt(participant)"
                     />
                     <div class="voice-roster__meta">
-                      <span class="voice-roster__name">{{ participant.nick }}</span>
+                      <span class="voice-roster__name">{{ displayCharacterName(participant.character_name, participant.nick) }}</span>
                     </div>
                   </button>
                 }
@@ -448,7 +448,7 @@
                         [title]="voiceStateIconAlt(participant)"
                       />
                       <div class="voice-roster__meta">
-                        <span class="voice-roster__name">{{ participant.nick }}</span>
+                        <span class="voice-roster__name">{{ displayCharacterName(participant.character_name, participant.nick) }}</span>
                       </div>
                     </button>
                   }
@@ -590,10 +590,10 @@
                     type="button"
                     (click)="openVoiceParticipantControls(participant.user_id, activeChannel()?.id ?? '')"
                   >
-                  <div class="voice-card__avatar">{{ participant.nick.slice(0, 2).toUpperCase() }}</div>
+                  <div class="voice-card__avatar">{{ displayCharacterInitials(participant.character_name, participant.nick) }}</div>
                   <div class="voice-card__body voice-card__body--compact">
                     <div class="voice-card__title">
-                      <strong>{{ participant.nick }}</strong>
+                      <strong>{{ displayCharacterName(participant.character_name, participant.nick) }}</strong>
                       @if (participant.is_self) {
                         <small class="voice-card__self">вы</small>
                       }
@@ -632,14 +632,14 @@
                         class="message-card__avatar"
                         [style.--avatar-accent]="message.author.id === currentUser()?.id ? '#ff9f43' : '#3dd6c6'"
                       >
-                        {{ message.author.nick.slice(0, 2).toUpperCase() }}
+                        {{ displayCharacterInitials(message.author.character_name, message.author.nick) }}
                       </div>
                       <div class="message-card__body">
                         <div class="message-card__meta">
                           <div class="message-card__author">
-                            <strong>{{ message.author.nick }}</strong>
-                            @if (message.author.full_name !== message.author.nick) {
-                              <span>{{ message.author.full_name }}</span>
+                            <strong>{{ displayCharacterName(message.author.character_name, message.author.nick) }}</strong>
+                            @if (message.author.nick !== displayCharacterName(message.author.character_name, message.author.nick)) {
+                              <span>&#64;{{ message.author.nick }}</span>
                             }
                           </div>
                           <time>{{ formatMessageTime(message.created_at) }}</time>
@@ -844,7 +844,7 @@
       <section class="panel-card profile-card">
         <div class="panel-header">
           <div class="profile-head">
-            <h3>{{ currentUser()?.nick ?? 'Ожидание авторизации' }}</h3>
+            <h3>{{ displayCharacterName(currentUser()?.character_name, currentUser()?.nick ?? 'Ожидание авторизации') }}</h3>
             <small>{{ currentUser()?.login ?? 'Нет активной сессии' }}</small>
           </div>
           <div class="profile-actions">
@@ -863,8 +863,8 @@
           </div>
         </div>
 
+        <p class="session-note">{{ currentUser()?.nick ?? 'Ник пока не загружен' }}</p>
         <p class="session-note">{{ currentUser()?.full_name ?? 'ФИО пока не загружено' }}</p>
-        <p class="session-note">{{ currentUser()?.character_name ?? 'Персонаж пока не указан' }}</p>
         @if (hasVoiceConnection()) {
           <p class="session-note">В голосе: {{ connectedVoiceChannel()?.name }}</p>
         }
@@ -890,7 +890,7 @@
                   <span class="member-dot" [class.member-dot--online]="member.isOnline"></span>
                 </span>
                 <strong class="member-row__name">
-                  {{ member.nick }}
+                  {{ displayCharacterName(member.characterName, member.nick) }}
                   @if (member.isSelf) {
                     <span class="member-row__self">вы</span>
                   }
@@ -960,13 +960,13 @@
       <div class="modal__header">
         <div>
           <p class="eyebrow">Запрос на вход</p>
-          <h3>{{ activeRequest.requester_nick }}</h3>
+          <h3>{{ displayCharacterName(activeRequest.requester_character_name, activeRequest.requester_nick) }}</h3>
         </div>
         <button class="icon-button" type="button" (click)="closeActiveOwnerRequest()">✕</button>
       </div>
 
       <div class="modal__body">
-        <p class="modal-note">{{ activeRequest.requester_full_name }}, хочет зайти в канал {{ activeRequest.channel_name }}</p>
+        <p class="modal-note">{{ displayCharacterName(activeRequest.requester_character_name, activeRequest.requester_nick) }}, хочет зайти в канал {{ activeRequest.channel_name }}</p>
       </div>
 
       <div class="modal__actions">
@@ -1140,7 +1140,11 @@
                   class="voice-admin__channel-owner"
                   [class.voice-admin__channel-owner--empty]="!channel.owner_nick"
                 >
-                  {{ channel.owner_nick ? 'Владелец: ' + channel.owner_nick : 'Владелец не назначен' }}
+                  {{
+                    channel.owner_nick
+                      ? 'Владелец: ' + displayCharacterName(channel.owner_character_name, channel.owner_nick)
+                      : 'Владелец не назначен'
+                  }}
                 </small>
               </button>
             }
@@ -1170,7 +1174,7 @@
                 <select [(ngModel)]="voiceAdminAssignmentForm.userId" name="voice_admin_user">
                   @for (user of voiceAdminUsers(); track user.user_id) {
                     <option [value]="user.user_id">
-                      {{ user.nick }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}
+                      {{ displayCharacterName(user.character_name, user.nick) }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}
                     </option>
                   }
                 </select>
@@ -1201,8 +1205,8 @@
                   @for (view of voiceAdminSelectedChannelAccessView(); track view.entry.user_id) {
                     <div class="voice-admin__row">
                       <div class="voice-admin__meta">
-                        <strong>{{ view.entry.nick }}</strong>
-                        <small>{{ view.entry.full_name }}</small>
+                        <strong>{{ displayCharacterName(view.entry.character_name, view.entry.nick) }}</strong>
+                        <small>&#64;{{ view.entry.nick }}</small>
                       </div>
 
                       <div class="voice-admin__chips">
@@ -1430,13 +1434,13 @@
       <div class="modal__header">
         <div>
           <p class="eyebrow">Участник</p>
-          <h3>{{ member.nick }}</h3>
+          <h3>{{ displayCharacterName(member.characterName, member.nick) }}</h3>
         </div>
         <button class="icon-button" type="button" (click)="closeMemberVolume()">✕</button>
       </div>
 
       <div class="modal__body">
-        <p class="modal-note">{{ member.fullName }} · {{ member.roleLabel }}</p>
+        <p class="modal-note">&#64;{{ member.nick }} · {{ member.roleLabel }}</p>
         <p class="modal-note">Статус: {{ member.presenceLabel }}</p>
         @if (selectedVoiceMemberChannelId() && selectedVoiceMemberAccessEntry()) {
           <p class="modal-note">Доступ к каналу: {{ selectedVoiceMemberRoleLabel() }}</p>

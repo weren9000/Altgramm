@@ -51,6 +51,7 @@ class VoicePresenceParticipantSummary(BaseModel):
     user_id: UUID
     nick: str
     full_name: str
+    character_name: str | None
     muted: bool
     owner_muted: bool
 
