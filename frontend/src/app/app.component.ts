@@ -3406,7 +3406,7 @@ export class AppComponent {
   private bootstrapWorkspace(token: string): void {
     this.workspaceLoading.set(true);
     this.workspaceError.set(null);
-    this.closeMobilePanel();
+    this.mobilePanel.set(this.isCompactVoiceWorkspaceViewport() ? 'servers' : null);
     this.voiceRoom.leave();
 
     forkJoin({
