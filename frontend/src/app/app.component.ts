@@ -2355,7 +2355,14 @@ export class AppComponent {
 
   selectServer(serverId: string): void {
     const token = this.session()?.access_token;
-    if (!token || serverId === this.selectedServerId()) {
+    if (!token) {
+      return;
+    }
+
+    if (serverId === this.selectedServerId()) {
+      if (this.isCompactVoiceWorkspaceViewport()) {
+        this.mobilePanel.set('channels');
+      }
       return;
     }
 
@@ -2396,7 +2403,11 @@ export class AppComponent {
     }
 
     this.schedulePresenceHeartbeat(true);
-    this.closeMobilePanel();
+    if (this.isCompactVoiceWorkspaceViewport()) {
+      this.mobilePanel.set('channels');
+    } else {
+      this.closeMobilePanel();
+    }
     this.stopMemberPolling();
     this.stopVoicePresencePolling();
     this.stopMessageAutoRefreshPolling();
