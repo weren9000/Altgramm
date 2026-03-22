@@ -746,7 +746,7 @@ export class AppComponent {
 
   readonly voiceStatusLabel = computed(() => {
     if (this.voiceError()) {
-      return this.voiceError();
+      return '';
     }
 
     if (this.voiceState() === 'connecting') {

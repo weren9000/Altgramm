@@ -512,7 +512,14 @@
             <button class="voice-workspace__meta voice-dock__meta voice-dock__open" type="button" (click)="openConnectedVoiceChannel()">
               <p class="eyebrow">Голос в фоне</p>
               <strong>{{ connectedVoiceChannel()?.name }}</strong>
-              <small>{{ voiceDockLabel() }} · участников: {{ voiceParticipants().length }}</small>
+              @if (voiceDockLabel()) {
+                <small>
+                  {{ voiceDockLabel() }}
+                  @if (voiceParticipants().length > 0) {
+                    <span> · участников: {{ voiceParticipants().length }}</span>
+                  }
+                </small>
+              }
             </button>
 
             <button
@@ -548,7 +555,16 @@
             <div class="voice-workspace__meta">
               <p class="eyebrow">Голосовой канал</p>
               <strong>{{ activeChannel()?.name }}</strong>
-              <small>{{ voiceStatusLabel() }} · участников: {{ activeVoiceRosterCount() }}</small>
+              @if (voiceStatusLabel() || activeVoiceRosterCount() > 0) {
+                <small>
+                  @if (voiceStatusLabel()) {
+                    <span>{{ voiceStatusLabel() }}</span>
+                  }
+                  @if (activeVoiceRosterCount() > 0) {
+                    <span>{{ voiceStatusLabel() ? ' · ' : '' }}участников: {{ activeVoiceRosterCount() }}</span>
+                  }
+                </small>
+              }
             </div>
 
             @if (isInActiveVoiceChannel()) {
@@ -563,8 +579,14 @@
               </button>
             } @else {
               <div class="voice-workspace__join">
-                <button class="secondary-button" type="button" (click)="joinActiveVoiceChannel()">
-                  {{ hasVoiceConnection() ? 'Перейти в канал' : 'Подключиться' }}
+                <button
+                  class="secondary-button voice-connect-button"
+                  type="button"
+                  (click)="joinActiveVoiceChannel()"
+                  [attr.aria-label]="hasVoiceConnection() ? 'Перейти в голосовой канал' : 'Подключиться к голосовому каналу'"
+                  [attr.title]="hasVoiceConnection() ? 'Перейти в голосовой канал' : 'Подключиться к голосовому каналу'"
+                >
+                  <img src="/assets/Phone_connect.svg" alt="" />
                 </button>
               </div>
             }
@@ -896,46 +918,55 @@
           accept="image/png,image/jpeg"
           (change)="onProfileAvatarSelection($event)"
         />
-        <div class="panel-header">
-          <div class="profile-summary">
-            <button
-              class="profile-avatar-button"
-              type="button"
-              [disabled]="!currentUser() || profileSaving()"
-              title="Нажмите, чтобы загрузить аватарку"
-              (click)="openProfileAvatarPicker('instant')"
-            >
-              @if (currentUserAvatarUrl(); as avatarUrl) {
-                <img [src]="avatarUrl" [alt]="displayCharacterName(currentUser()?.character_name, currentUser()?.nick ?? '')" loading="lazy" />
-              } @else {
-                <span>{{ displayCharacterInitials(currentUser()?.character_name, currentUser()?.nick ?? '??') }}</span>
-              }
-              <span class="profile-avatar-button__hint">+</span>
-            </button>
-            <div class="profile-head">
-              <h3>{{ displayCharacterName(currentUser()?.character_name, currentUser()?.nick ?? 'Ожидание авторизации') }}</h3>
-              <small>{{ currentUser()?.login ?? 'Нет активной сессии' }}</small>
-            </div>
-          </div>
-          <div class="profile-actions">
-            <button class="secondary-button profile-edit-button" type="button" (click)="openProfileEditor()">Профиль</button>
-            @if (isAdmin()) {
-              <button
-                class="secondary-button profile-admin-button"
-                type="button"
-                title="Управление доступом к голосовым каналам"
-                (click)="openVoiceAdminPanel()"
-              >
-                Доступ
-              </button>
+        <div class="profile-toolbar">
+          <button
+            class="profile-avatar-button"
+            type="button"
+            [disabled]="!currentUser() || profileSaving()"
+            title="Нажмите, чтобы загрузить аватарку"
+            (click)="openProfileAvatarPicker('instant')"
+          >
+            @if (currentUserAvatarUrl(); as avatarUrl) {
+              <img [src]="avatarUrl" [alt]="displayCharacterName(currentUser()?.character_name, currentUser()?.nick ?? '')" loading="lazy" />
+            } @else {
+              <span>{{ displayCharacterInitials(currentUser()?.character_name, currentUser()?.nick ?? '??') }}</span>
             }
-            <button class="icon-button" type="button" (click)="openVoiceSettings()">⚙</button>
-            <button class="secondary-button profile-logout" type="button" (click)="logout()">Выйти</button>
-          </div>
+          </button>
+          <button
+            class="secondary-button profile-edit-button"
+            type="button"
+            aria-label="Профиль"
+            title="Профиль"
+            (click)="openProfileEditor()"
+          >
+            <img src="/assets/User_Profile.svg" alt="" />
+          </button>
+          <button class="icon-button profile-settings-button" type="button" aria-label="Настройки" title="Настройки" (click)="openVoiceSettings()">⚙</button>
+          <button
+            class="secondary-button profile-logout"
+            type="button"
+            aria-label="Выйти"
+            title="Выйти"
+            (click)="logout()"
+          >
+            <img src="/assets/Log out.svg" alt="" />
+          </button>
         </div>
 
-        <p class="session-note">{{ currentUser()?.nick ?? 'Ник пока не загружен' }}</p>
-        <p class="session-note">{{ currentUser()?.full_name ?? 'ФИО пока не загружено' }}</p>
+        <div class="profile-character">
+          <p class="eyebrow">Персонаж</p>
+          <strong>{{ displayCharacterName(currentUser()?.character_name, currentUser()?.nick ?? 'Ожидание авторизации') }}</strong>
+        </div>
+        @if (isAdmin()) {
+          <button
+            class="secondary-button profile-admin-button"
+            type="button"
+            title="Управление доступом к голосовым каналам"
+            (click)="openVoiceAdminPanel()"
+          >
+            Доступ
+          </button>
+        }
         @if (profileError()) {
           <p class="session-note session-note--error">{{ profileError() }}</p>
         } @else if (profileNotice()) {
@@ -1039,6 +1070,11 @@
             maxlength="64"
           />
         </label>
+
+        <div class="profile-editor__summary">
+          <p><span>Ник:</span> {{ currentUser()?.nick ?? 'Не указан' }}</p>
+          <p><span>Имя игрока:</span> {{ currentUser()?.full_name ?? 'Не указано' }}</p>
+        </div>
 
         @if (profileError()) {
           <p class="modal-note modal-note--error">{{ profileError() }}</p>

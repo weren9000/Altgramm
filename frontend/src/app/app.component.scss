@@ -1038,6 +1038,19 @@ select {
   min-width: 0;
 }
 
+.voice-connect-button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+}
+
+.voice-connect-button img {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
 .voice-workspace__mute,
 .voice-workspace__leave {
   width: 44px;
@@ -1095,8 +1108,7 @@ select {
   overscroll-behavior: contain;
 }
 
-.channel-rail,
-.member-rail {
+.channel-rail {
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -1756,15 +1768,22 @@ select {
 }
 
 .member-rail {
+  overflow: hidden;
   gap: var(--space);
 }
 
 .profile-card {
+  flex: 0 0 auto;
   background: var(--surface-soft);
   padding: var(--space);
 }
 
 .panel-card--members {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: var(--space);
 }
 
@@ -1787,18 +1806,11 @@ select {
   margin-bottom: var(--space);
 }
 
-.profile-summary {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .profile-avatar-button {
   position: relative;
-  width: 56px;
-  height: 56px;
-  flex: 0 0 56px;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -1818,47 +1830,23 @@ select {
   object-fit: cover;
 }
 
-.profile-avatar-button__hint {
-  position: absolute;
-  right: 2px;
-  bottom: 2px;
-  width: 16px;
-  height: 16px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(255, 159, 67, 0.92);
-  color: #131b24;
-  font-size: 0.72rem;
-  font-weight: 700;
+.profile-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: var(--space);
 }
 
-.profile-head {
+.profile-character {
   min-width: 0;
 }
 
-.profile-head h3,
-.profile-head small {
+.profile-character strong {
   display: block;
-}
-
-.profile-head h3 {
-  margin: 0;
-  font-size: 1rem;
-  line-height: 1.15;
-}
-
-.profile-head small {
-  margin-top: 3px;
-  font-size: 0.8rem;
-}
-
-.profile-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: var(--space);
+  margin-top: 2px;
+  font-size: 0.96rem;
+  line-height: 1.2;
 }
 
 .profile-edit-button,
@@ -1868,10 +1856,54 @@ select {
   font-size: 0.8rem;
 }
 
+.profile-edit-button,
+.profile-logout {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.profile-edit-button img,
+.profile-logout img {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.profile-settings-button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.profile-admin-button {
+  margin-top: 8px;
+}
+
 .members-list {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.panel-card--members .panel-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .member-row {
@@ -2066,6 +2098,21 @@ select {
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
+}
+
+.profile-editor__summary {
+  display: grid;
+  gap: 6px;
+}
+
+.profile-editor__summary p {
+  margin: 0;
+  color: #dbe2e9;
+  line-height: 1.5;
+}
+
+.profile-editor__summary span {
+  color: var(--muted);
 }
 
 .profile-editor__controls small {
@@ -2777,14 +2824,10 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .profile-summary {
-    align-items: center;
-  }
-
   .profile-avatar-button {
-    width: 48px;
-    height: 48px;
-    flex-basis: 48px;
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
   }
 
   .profile-editor {
