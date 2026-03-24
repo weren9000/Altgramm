@@ -11,7 +11,7 @@ export interface DirectCallPeer {
 }
 
 type DirectCallState = 'idle' | 'outgoing' | 'incoming' | 'connecting' | 'connected';
-type DirectCallSignalType = 'offer' | 'answer' | 'ice_candidate';
+type DirectCallSignalType = 'offer' | 'answer' | 'ice_candidate' | 'screen_share_state';
 
 interface DirectCallReadyMessage {
   type: 'ready';
@@ -53,7 +53,7 @@ interface DirectCallRelayedSignalMessage {
   type: DirectCallSignalType;
   call_id: string;
   from_user_id: string;
-  payload: RTCSessionDescriptionInit | RTCIceCandidateInit;
+  payload: RTCSessionDescriptionInit | RTCIceCandidateInit | { sharing: boolean };
 }
 
 interface DirectCallErrorMessage {
@@ -273,6 +273,7 @@ export class DirectCallService {
         this.screenShareSender = this.peerConnection.addTrack(track, stream);
       }
 
+      this.sendScreenShareState(true);
       this.error.set(null);
       this.notice.set('Вы показываете экран');
       await this.renegotiate();
@@ -292,6 +293,7 @@ export class DirectCallService {
     }
 
     if (this.state() === 'connected') {
+      this.sendScreenShareState(false);
       this.notice.set('Показ экрана остановлен');
       await this.renegotiate();
     }
@@ -464,6 +466,21 @@ export class DirectCallService {
         await this.peerConnection.addIceCandidate(new RTCIceCandidate(message.payload as RTCIceCandidateInit));
       } catch {
         // Ignore malformed ICE candidates instead of breaking the call.
+      }
+      return;
+    }
+
+    if (message.type === 'screen_share_state') {
+      const payload = message.payload as { sharing?: unknown } | null;
+      const sharing = Boolean(payload?.sharing);
+
+      if (!sharing) {
+        this.clearRemoteScreenShare();
+        if (this.state() === 'connected') {
+          this.notice.set('Показ экрана собеседника остановлен');
+        }
+      } else if (this.state() === 'connected') {
+        this.notice.set('Собеседник начал показ экрана');
       }
       return;
     }
@@ -768,5 +785,21 @@ export class DirectCallService {
     }
 
     this.remoteScreenStream.set(null);
+  }
+
+  private sendScreenShareState(sharing: boolean): void {
+    const peer = this.peer();
+    if (!peer || !this.activeCallId) {
+      return;
+    }
+
+    this.send({
+      type: 'screen_share_state',
+      call_id: this.activeCallId,
+      target_user_id: peer.user_id,
+      payload: {
+        sharing
+      }
+    });
   }
 }

@@ -2058,6 +2058,139 @@ select {
   justify-content: flex-start;
 }
 
+.modal--direct-call {
+  width: min(680px, 100%);
+}
+
+.modal--direct-call.modal--wide {
+  width: min(1040px, 100%);
+}
+
+.direct-call-peer-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.direct-call-peer-card__avatar {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff7ec;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.direct-call-peer-card__avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.direct-call-peer-card__meta {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.direct-call-peer-card__meta strong,
+.direct-call-peer-card__meta small,
+.direct-call-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.direct-call-peer-card__meta strong {
+  font-size: 0.96rem;
+  line-height: 1.15;
+}
+
+.direct-call-peer-card__meta small,
+.direct-call-status {
+  color: var(--muted);
+}
+
+.direct-call-status {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.direct-call-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.direct-call-actions--overlay {
+  justify-content: flex-end;
+}
+
+.direct-call-icon-button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.direct-call-icon-button:hover:not(:disabled) {
+  border-color: rgba(61, 214, 198, 0.36);
+  background: rgba(61, 214, 198, 0.08);
+}
+
+.direct-call-icon-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.direct-call-icon-button--accept {
+  border-color: rgba(61, 214, 198, 0.32);
+  background: rgba(61, 214, 198, 0.1);
+}
+
+.direct-call-icon-button--danger {
+  border-color: rgba(255, 107, 107, 0.28);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.direct-call-icon-button--active {
+  border-color: rgba(255, 159, 67, 0.4);
+  background: rgba(255, 159, 67, 0.12);
+  color: var(--accent);
+}
+
+.direct-call-icon-button img,
+.direct-call-icon-button svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.direct-call-icon-button svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .direct-call-button {
   display: inline-flex;
   align-items: center;
@@ -2074,6 +2207,10 @@ select {
   display: grid;
   gap: 10px;
   margin-top: 12px;
+}
+
+.direct-call-screen-stack--overlay {
+  position: relative;
 }
 
 .direct-call-screen {
@@ -2094,11 +2231,21 @@ select {
   border: 1px solid var(--line);
   background: #05080e;
   aspect-ratio: 16 / 9;
-  object-fit: cover;
+  object-fit: contain;
 }
 
-.direct-call-screen--local .direct-call-screen__video {
-  object-fit: contain;
+.direct-call-screen-stack--overlay .direct-call-screen--local {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: min(28vw, 220px);
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: rgba(8, 12, 18, 0.94);
+}
+
+.direct-call-screen-stack--overlay .direct-call-screen--local .direct-call-screen__video {
+  aspect-ratio: 16 / 10;
 }
 
 .direct-call-screen-overlay {
@@ -2955,10 +3102,17 @@ select {
     flex-direction: column;
   }
 
-  .direct-call-screen-overlay__actions {
+  .direct-call-actions,
+  .direct-call-actions--overlay {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  .direct-call-icon-button {
+    width: 100%;
+    height: 42px;
   }
 
   .direct-call-screen-overlay__preview {
@@ -2966,6 +3120,34 @@ select {
     bottom: 10px;
     width: min(42vw, 180px);
     padding: 8px;
+  }
+
+  .direct-call-peer-card {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .direct-call-peer-card__avatar {
+    width: 44px;
+    height: 44px;
+    font-size: 0.8rem;
+  }
+
+  .direct-call-peer-card__meta strong {
+    font-size: 0.9rem;
+  }
+
+  .direct-call-status {
+    font-size: 0.76rem;
+    line-height: 1.35;
+  }
+
+  .direct-call-screen-stack--overlay .direct-call-screen--local {
+    right: 8px;
+    bottom: 8px;
+    width: min(42vw, 150px);
+    padding: 6px;
   }
 
   .mobile-nav-button {
