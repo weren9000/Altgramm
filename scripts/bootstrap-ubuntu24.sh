@@ -192,12 +192,12 @@ lt-cred-mech
 realm=${APP_DOMAIN}
 server-name=${APP_DOMAIN}
 user=tescordturn:${TURN_PASSWORD}
-total-quota=100
+total-quota=600
 bps-capacity=0
 stale-nonce=600
 no-cli
 min-port=49160
-max-port=49200
+max-port=49999
 simple-log
 EOF
 

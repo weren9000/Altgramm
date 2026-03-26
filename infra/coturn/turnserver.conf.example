@@ -10,11 +10,13 @@ server-name=chat.example.com
 external-ip=YOUR_SERVER_PUBLIC_IP
 
 lt-cred-mech
-total-quota=100
+total-quota=600
 bps-capacity=0
 stale-nonce=600
 no-loopback-peers
 no-multicast-peers
+min-port=49160
+max-port=49999
 
 cert=/etc/letsencrypt/live/chat.example.com/fullchain.pem
 pkey=/etc/letsencrypt/live/chat.example.com/privkey.pem
