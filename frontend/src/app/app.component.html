@@ -1435,18 +1435,18 @@
       <div class="modal__body conversation-create">
         <div class="conversation-create__section">
           <label class="form-field">
-            <span>Поиск по нику, почте или ID</span>
+            <span>Поиск по нику или ID из личных</span>
             <input
               [ngModel]="addGroupMemberQuery()"
               (ngModelChange)="addGroupMemberQuery.set($event); addGroupMemberUserId.set('')"
               name="group_member_query"
               maxlength="120"
-              placeholder="Введите ник, почту или пятизначный ID"
+              placeholder="Введите ник или пятизначный ID"
               type="text"
             />
           </label>
 
-          <p class="modal-note">Можно выбрать пользователя из списка или добавить его по пятизначному ID.</p>
+          <p class="modal-note">В группу можно добавить только пользователя из раздела «Личные».</p>
 
           <div class="conversation-picker-list">
             @for (user of activeGroupKnownCandidates(); track user.user_id) {
@@ -1470,7 +1470,7 @@
                 </span>
               </button>
             } @empty {
-              <div class="rail-empty">Нет подходящих пользователей для добавления</div>
+              <div class="rail-empty">Сначала добавьте пользователя в раздел «Личные», потом сможете пригласить его в группу</div>
             }
           </div>
         </div>

@@ -821,7 +821,7 @@ export class AppComponent {
     && !this.createConversationLoading()
   );
   readonly canAddGroupMember = computed(() =>
-    this.resolveUserLookupPayload(this.addGroupMemberUserId(), this.addGroupMemberQuery()) !== null
+    this.addGroupMemberUserId().trim().length > 0
     && !this.addGroupMemberLoading()
   );
   readonly createConversationAvailableUsers = computed(() =>
@@ -883,10 +883,33 @@ export class AppComponent {
         return this.displayNick(left.nick).localeCompare(this.displayNick(right.nick), 'ru');
       });
   });
+  readonly personalKnownUsers = computed(() => {
+    const currentUserId = this.currentUser()?.id ?? null;
+    const usersById = new Map<string, ConversationDirectoryUser>();
+
+    for (const conversation of this.directConversations()) {
+      for (const member of conversation.members) {
+        if (member.user_id === currentUserId || usersById.has(member.user_id)) {
+          continue;
+        }
+
+        usersById.set(member.user_id, {
+          user_id: member.user_id,
+          public_id: member.public_id,
+          login: member.login,
+          nick: member.nick,
+          avatar_updated_at: member.avatar_updated_at,
+          is_online: member.is_online,
+        });
+      }
+    }
+
+    return [...usersById.values()];
+  });
   readonly activeGroupKnownCandidates = computed(() => {
     const existingMemberIds = new Set(this.members().map((member) => member.user_id));
     const query = this.addGroupMemberQueryNormalized();
-    return this.conversationDirectory()
+    return this.personalKnownUsers()
       .filter((user) => !existingMemberIds.has(user.user_id))
       .filter((user) => {
         if (!query) {
@@ -895,7 +918,6 @@ export class AppComponent {
 
         return (
           this.displayNick(user.nick).toLowerCase().includes(query)
-          || user.login.toLowerCase().includes(query)
           || this.formatPublicUserId(user.public_id).includes(query)
         );
       })
@@ -2240,8 +2262,7 @@ export class AppComponent {
   }
 
   openAddGroupMemberModal(): void {
-    const token = this.session()?.access_token;
-    if (!token || !this.activeGroupConversation() || !this.canManageActiveGroup()) {
+    if (!this.session()?.access_token || !this.activeGroupConversation() || !this.canManageActiveGroup()) {
       return;
     }
 
@@ -2250,7 +2271,6 @@ export class AppComponent {
     this.managementError.set(null);
     this.managementSuccess.set(null);
     this.addGroupMemberModalOpen.set(true);
-    void this.loadConversationDirectory(token);
   }
 
   closeAddGroupMemberModal(): void {
@@ -2262,7 +2282,8 @@ export class AppComponent {
   submitAddGroupMember(): void {
     const token = this.session()?.access_token;
     const serverId = this.selectedServerId();
-    const payload = this.resolveUserLookupPayload(this.addGroupMemberUserId(), this.addGroupMemberQuery());
+    const selectedUserId = this.addGroupMemberUserId().trim();
+    const payload = selectedUserId ? { user_id: selectedUserId } : null;
     if (!token || !serverId || !payload) {
       this.managementError.set('Выберите пользователя для добавления в группу');
       return;
