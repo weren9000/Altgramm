@@ -107,6 +107,16 @@ export class WorkspaceApiService {
     });
   }
 
+  addServerMember(token: string, serverId: string, userId: string): Observable<WorkspaceMember> {
+    return this.http.post<WorkspaceMember>(
+      `${API_BASE_URL}/api/servers/${serverId}/members`,
+      { user_id: userId },
+      {
+        headers: this.buildAuthHeaders(token)
+      }
+    );
+  }
+
   getVoicePresence(token: string, serverId: string): Observable<WorkspaceVoicePresenceChannel[]> {
     return this.http.get<WorkspaceVoicePresenceChannel[]>(`${API_BASE_URL}/api/servers/${serverId}/voice-presence`, {
       headers: this.buildAuthHeaders(token)

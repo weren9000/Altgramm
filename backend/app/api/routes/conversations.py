@@ -17,6 +17,7 @@ from app.schemas.conversations import (
     CreateGroupConversationRequest,
 )
 from app.services.app_events import publish_servers_changed_from_sync
+from app.services.group_chat_defaults import ensure_group_chat_defaults
 from app.services.server_icons import normalize_server_icon_asset
 from app.services.site_presence import site_presence_manager
 
@@ -211,6 +212,8 @@ def open_direct_conversation(
             ),
         ]
     )
+    db.flush()
+    ensure_group_chat_defaults(db, server, created_by_id=current_user.id)
     db.commit()
 
     created_server = _load_conversation(server.id, db)
@@ -258,16 +261,6 @@ def create_group_conversation(
     db.flush()
 
     db.add(
-        Channel(
-            server_id=server.id,
-            created_by_id=current_user.id,
-            name="Чат",
-            topic="Мини-группа",
-            type=ChannelType.TEXT,
-            position=0,
-        )
-    )
-    db.add(
         ServerMember(
             server_id=server.id,
             user_id=current_user.id,
@@ -286,6 +279,8 @@ def create_group_conversation(
             for user in users
         ]
     )
+    db.flush()
+    ensure_group_chat_defaults(db, server, created_by_id=current_user.id)
     db.commit()
 
     created_server = _load_conversation(server.id, db)

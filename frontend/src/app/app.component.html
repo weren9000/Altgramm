@@ -111,934 +111,66 @@
     </section>
   </div>
 } @else {
-  <div class="shell">
-    <header class="mobile-toolbar">
-      <div class="mobile-toolbar__meta">
-        <strong>{{ activeServer()?.name ?? 'KVA Chat' }}</strong>
-        @if (activeChannel()) {
-          <small>{{ mobileWorkspaceSubtitle() }}</small>
-        }
-        <div class="space-mode-toggle space-mode-toggle--mobile">
-          <button
-            class="space-mode-toggle__button"
-            [class.space-mode-toggle__button--active]="isChatsMode()"
-            type="button"
-            (click)="selectWorkspaceMode('chats')"
-          >
-            Чаты
-          </button>
-          <button
-            class="space-mode-toggle__button"
-            [class.space-mode-toggle__button--active]="isGroupsMode()"
-            type="button"
-            (click)="selectWorkspaceMode('groups')"
-          >
-            Группы
-          </button>
-        </div>
+  <div class="messenger-shell">
+    <input
+      #profileAvatarInput
+      hidden
+      type="file"
+      accept="image/png,image/jpeg"
+      (change)="onProfileAvatarSelection($event)"
+    />
+
+    <header class="app-header">
+      <div class="app-header__start">
+        <button class="icon-button app-header__menu" type="button" aria-label="????" title="????" (click)="toggleSideMenu()">
+          ?
+        </button>
+        <button class="secondary-button app-header__sidebar-toggle" type="button" aria-label="??????? ??????" title="??????? ??????" (click)="toggleMobilePanel('servers')">
+          <span>{{ activeSpaceListTitle() }}</span>
+        </button>
+        <img class="app-header__logo" src="/assets/KVA-chat.png" alt="KVA Chat" />
       </div>
 
-      <div class="mobile-toolbar__actions">
-        <button
-          class="mobile-nav-button"
-          [class.mobile-nav-button--active]="mobilePanel() === 'servers'"
-          type="button"
-          (click)="toggleMobilePanel('servers')"
-        >
-          Группы
-        </button>
-        <button
-          class="mobile-nav-button"
-          [class.mobile-nav-button--active]="mobilePanel() === 'channels'"
-          type="button"
-          (click)="toggleMobilePanel('channels')"
-          [disabled]="!activeServer()"
-        >
-          Каналы
-        </button>
-        <button
-          class="mobile-nav-button"
-          [class.mobile-nav-button--active]="mobilePanel() === 'members'"
-          type="button"
-          (click)="toggleMobilePanel('members')"
-          [disabled]="!activeServer()"
-        >
-          Участники
-        </button>
+      <div class="app-header__center">
+        @if (activeServer()) {
+          <strong>{{ activeServer()?.name }}</strong>
+          <small>{{ activeSpaceMetaLabel() }}</small>
+        } @else {
+          <strong>KVA Chat</strong>
+          <small>???????? ??? ??? ??????</small>
+        }
+      </div>
+
+      <div class="app-header__actions">
+        @if (isChatsMode() && activeDirectPeer()) {
+          <button class="primary-button header-call-button" type="button" title="?????????" aria-label="?????????" (click)="openActiveDirectPeerCall()">
+            <img src="/assets/Phone_connect.svg" alt="" />
+          </button>
+        }
+        @if (isGroupsMode() && activeGroupVoiceChannel()) {
+          <button
+            class="secondary-button header-call-button"
+            type="button"
+            [class.header-call-button--active]="connectedVoiceChannelId() === activeGroupVoiceChannel()?.id"
+            [attr.title]="connectedVoiceChannelId() === activeGroupVoiceChannel()?.id ? '????? ?? ?????????? ????' : '????? ? ????????? ???'"
+            [attr.aria-label]="connectedVoiceChannelId() === activeGroupVoiceChannel()?.id ? '????? ?? ?????????? ????' : '????? ? ????????? ???'"
+            (click)="toggleActiveGroupVoice()"
+          >
+            <img [src]="connectedVoiceChannelId() === activeGroupVoiceChannel()?.id ? '/assets/Phone outgoing.svg' : '/assets/Phone_connect.svg'" alt="" />
+          </button>
+        }
       </div>
     </header>
 
-    @if (mobilePanel()) {
-      <button class="mobile-backdrop" type="button" aria-label="Закрыть панель" (click)="closeMobilePanel()"></button>
-    }
-
-    <aside class="server-rail" [class.server-rail--mobile-open]="mobilePanel() === 'servers'">
-      <div class="mobile-panel-head">
-        <span>Группы</span>
-        <button class="mobile-panel-close" type="button" aria-label="Закрыть группы" (click)="closeMobilePanel()">
-          ×
-        </button>
-      </div>
-
-      <div class="server-rail__list">
-        @if (serverShortcuts().length) {
-          @for (server of serverShortcuts(); track server.id) {
-            <button
-              class="server-token"
-              [class.server-token--active]="server.active"
-              [attr.title]="server.name"
-              type="button"
-              (click)="selectServer(server.id)"
-            >
-              @if (server.iconUrl) {
-                <span class="server-token__mark server-token__mark--image">
-                  <img class="server-token__image" [src]="server.iconUrl" alt="" />
-                </span>
-              } @else {
-                <span class="server-token__mark">{{ server.label }}</span>
-              }
-              <span class="server-token__copy">
-                <span class="server-token__name">{{ server.name }}</span>
-                @if (server.meta) {
-                  <small class="server-token__meta">{{ server.meta }}</small>
-                }
-              </span>
-            </button>
-          }
-        } @else {
-          <button class="server-token server-token--ghost" type="button" disabled title="Нет групп">
-            <span class="server-token__mark">--</span>
-          </button>
-        }
-      </div>
-
-      <div class="server-rail__footer">
-        @if (isChatsMode()) {
-          <button class="server-add" type="button" (click)="openCreateConversationModal()">+</button>
-        }
-        @if (!isChatsMode() && isAdmin()) {
-          <button class="server-add" type="button" (click)="openCreateGroupModal()">+</button>
-        }
-      </div>
-    </aside>
-
-    <aside class="channel-rail" [class.channel-rail--mobile-open]="mobilePanel() === 'channels'">
-      <div class="mobile-panel-head">
-        <span>Каналы</span>
-        <button class="mobile-panel-close" type="button" aria-label="Закрыть каналы" (click)="closeMobilePanel()">
-          ×
-        </button>
-      </div>
-
-      <header class="rail-header">
-        <div class="rail-header__line">
-          <p class="eyebrow">Группа</p>
-          <h1>{{ activeServer()?.name ?? 'KVA Chat' }}</h1>
-          @if (canEditActiveServerIcon()) {
-            <button class="secondary-button rail-header__icon-action desktop-only-action" type="button" (click)="openServerIconModal()">
-              Иконка
-            </button>
-          }
-        </div>
-      </header>
-
-      @if (isChatsMode()) {
-        <section class="channel-group channel-group--conversation">
-          <div class="section-head">
-            <div class="section-title">Чат</div>
-            <button class="section-action" type="button" (click)="openCreateConversationModal()">+</button>
-          </div>
-
-          @if (activeConversation(); as conversation) {
-            <div class="conversation-summary">
-              <strong>{{ conversation.title }}</strong>
-              @if (conversation.subtitle) {
-                <small>{{ conversation.subtitle }}</small>
-              }
-            </div>
-
-            <div class="conversation-members">
-              @for (member of conversation.members; track member.user_id) {
-                <button
-                  class="conversation-member"
-                  type="button"
-                  (click)="openMemberCall({
-                    id: member.user_id,
-                    userId: member.user_id,
-                    login: member.login,
-                    nick: member.nick,
-                    
-                    
-                    avatarUpdatedAt: member.avatar_updated_at,
-                    role: member.role,
-                    roleLabel: formatMemberRole(member.role),
-                    isSelf: member.user_id === currentUser()?.id,
-                    presenceLabel: formatOnlineStatus(member.is_online),
-                    isOnline: member.is_online,
-                    voiceParticipant: null
-                  })"
-                >
-                  <div class="conversation-member__avatar">
-                    @if (userAvatarUrl(member.user_id, member.avatar_updated_at); as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="displayNick(member.nick)" loading="lazy" />
-                    } @else {
-                      <span>{{ displayNickInitials(member.nick) }}</span>
-                    }
-                  </div>
-                  <div class="conversation-member__copy">
-                    <strong>{{ displayNick(member.nick) }}</strong>
-                    <small>{{ member.is_online ? 'онлайн' : 'офлайн' }}</small>
-                  </div>
-                </button>
-              }
-            </div>
-          } @else {
-            <div class="rail-empty">Выберите личный чат или мини-группу</div>
-          }
-        </section>
-      }
-
-      @if (isGroupsMode()) {
-      <section class="channel-group">
-        <div class="section-head">
-          <div class="section-title">текстовые каналы</div>
-          @if (canManageActiveGroup()) {
-            <button class="section-action" type="button" (click)="openCreateChannelModal('text')">+</button>
-          }
-        </div>
-
-        @if (textChannels().length) {
-          @for (channel of textChannels(); track channel.id) {
-            <div class="channel-row">
-              <button
-                class="channel-link"
-                [class.channel-link--active]="channel.id === selectedChannelId()"
-                type="button"
-                (click)="selectChannel(channel)"
-              >
-                <span class="channel-link__prefix">#</span>
-                <div class="channel-link__body">
-                  <strong>{{ channel.name }}</strong>
-                  @if (channel.topic) {
-                    <small>{{ channel.topic }}</small>
-                  }
-                </div>
-              </button>
-
-              @if (canManageActiveGroup()) {
-                <button
-                  class="channel-action"
-                  type="button"
-                  title="Удалить канал"
-                  [disabled]="isDeletingChannel(channel.id)"
-                  (click)="deleteChannel(channel)"
-                >
-                  {{ isDeletingChannel(channel.id) ? '...' : 'x' }}
-                </button>
-              }
-            </div>
-          }
-        } @else {
-          <div class="rail-empty">
-            {{ workspaceLoading() ? 'Загружаем каналы...' : 'В этой группе пока нет текстовых каналов' }}
-          </div>
-        }
-      </section>
-
-      @if (tavernVoiceChannel(); as tavernChannel) {
-        <section class="channel-group channel-group--tavern">
-          <div class="section-head">
-            <div class="section-title">Таверна</div>
-          </div>
-
-          <div
-            class="voice-channel-block voice-channel-block--tavern"
-            [class.voice-channel-block--connected]="tavernChannel.id === connectedVoiceChannel()?.id"
-          >
-            <div class="channel-row">
-              <button
-                class="channel-link channel-link--voice channel-link--tavern"
-                [class.channel-link--active]="tavernChannel.id === selectedChannelId()"
-                [class.channel-link--connected]="tavernChannel.id === connectedVoiceChannel()?.id"
-                type="button"
-                (click)="selectChannel(tavernChannel)"
-              >
-                <span class="channel-link__prefix channel-link__prefix--icon">
-                  <img class="channel-link__icon" src="/assets/Taverna.svg" alt="" />
-                </span>
-                <div class="channel-link__body">
-                  <strong>{{ tavernChannel.name }}</strong>
-                  @if (tavernChannel.id === connectedVoiceChannel()?.id) {
-                    <small>В голосе</small>
-                  } @else {
-                    <small>Общий голосовой канал группы</small>
-                  }
-                </div>
-              </button>
-            </div>
-
-            @if (voiceParticipantsForChannel(tavernChannel.id).length) {
-              <div class="voice-roster">
-                @for (participant of voiceParticipantsForChannel(tavernChannel.id); track participant.id) {
-                  <button
-                    class="voice-roster__member"
-                    [class.voice-roster__member--speaking]="voiceParticipantTone(participant) === 'speaking'"
-                    [class.voice-roster__member--blocked]="voiceParticipantTone(participant) === 'blocked'"
-                    [class.voice-roster__member--open]="voiceParticipantTone(participant) === 'open'"
-                    [class.voice-roster__member--muted]="voiceParticipantTone(participant) === 'muted'"
-                    type="button"
-                    (click)="openVoiceParticipantControls(participant.user_id, tavernChannel.id)"
-                  >
-                    <div class="voice-roster__avatar">
-                      @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
-                        <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
-                      } @else {
-                        <span>{{ displayNickInitials(participant.nick) }}</span>
-                      }
-                    </div>
-                    <div class="voice-roster__meta">
-                      <span class="voice-roster__name">{{ displayNick(participant.nick) }}</span>
-                    </div>
-                    <img
-                      class="voice-state-icon voice-state-icon--roster"
-                      [src]="voiceStateIconPath(participant)"
-                      [alt]="voiceStateIconAlt(participant)"
-                      [title]="voiceStateIconAlt(participant)"
-                    />
-                  </button>
-                }
-              </div>
-            }
-          </div>
-        </section>
-      }
-
-      <section class="channel-group">
-        <div class="section-head">
-          <div class="section-title">голосовые каналы</div>
-          @if (canManageActiveGroup()) {
-            <button class="section-action" type="button" (click)="openCreateChannelModal('voice')">+</button>
-          }
-        </div>
-
-        @if (tavernVoiceChannel(); as tavernChannel) {
-          <div
-            class="voice-channel-block voice-channel-block--tavern"
-            [class.voice-channel-block--connected]="tavernChannel.id === connectedVoiceChannel()?.id"
-            hidden
-          >
-            <div class="channel-row">
-              <button
-                class="channel-link channel-link--voice channel-link--tavern"
-                [class.channel-link--active]="tavernChannel.id === selectedChannelId()"
-                [class.channel-link--connected]="tavernChannel.id === connectedVoiceChannel()?.id"
-                type="button"
-                (click)="selectChannel(tavernChannel)"
-              >
-                <span class="channel-link__prefix channel-link__prefix--icon">
-                  <img class="channel-link__icon" src="/assets/Taverna.svg" alt="" />
-                </span>
-                <div class="channel-link__body">
-                  <strong>{{ tavernChannel.name }}</strong>
-                  @if (tavernChannel.id === connectedVoiceChannel()?.id) {
-                    <small>Р’ РіРѕР»РѕСЃРµ</small>
-                  } @else {
-                    <small>Общий голосовой канал группы</small>
-                  }
-                </div>
-              </button>
-            </div>
-
-            @if (voiceParticipantsForChannel(tavernChannel.id).length) {
-              <div class="voice-roster">
-                @for (participant of voiceParticipantsForChannel(tavernChannel.id); track participant.id) {
-                  <button
-                    class="voice-roster__member"
-                    [class.voice-roster__member--speaking]="voiceParticipantTone(participant) === 'speaking'"
-                    [class.voice-roster__member--blocked]="voiceParticipantTone(participant) === 'blocked'"
-                    [class.voice-roster__member--open]="voiceParticipantTone(participant) === 'open'"
-                    [class.voice-roster__member--muted]="voiceParticipantTone(participant) === 'muted'"
-                    type="button"
-                    (click)="openVoiceParticipantControls(participant.user_id, tavernChannel.id)"
-                  >
-                    <div class="voice-roster__avatar">
-                      @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
-                        <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
-                      } @else {
-                        <span>{{ displayNickInitials(participant.nick) }}</span>
-                      }
-                    </div>
-                    <div class="voice-roster__meta">
-                      <span class="voice-roster__name">{{ displayNick(participant.nick) }}</span>
-                    </div>
-                    <img
-                      class="voice-state-icon voice-state-icon--roster"
-                      [src]="voiceStateIconPath(participant)"
-                      [alt]="voiceStateIconAlt(participant)"
-                      [title]="voiceStateIconAlt(participant)"
-                    />
-                  </button>
-                }
-              </div>
-            }
-          </div>
-        }
-
-        @if (regularVoiceChannels().length) {
-          @for (channel of regularVoiceChannels(); track channel.id) {
-            <div
-              class="voice-channel-block"
-              [class.voice-channel-block--connected]="channel.id === connectedVoiceChannel()?.id"
-            >
-              <div class="channel-row">
-              <button
-                class="channel-link channel-link--voice"
-                [class.channel-link--active]="channel.id === selectedChannelId()"
-                [class.channel-link--connected]="channel.id === connectedVoiceChannel()?.id"
-                type="button"
-                (click)="selectChannel(channel)"
-              >
-                <span class="channel-link__prefix">)))</span>
-                <div class="channel-link__body">
-                  <strong>{{ channel.name }}</strong>
-                  @if (channel.id === connectedVoiceChannel()?.id) {
-                    <small>В голосе</small>
-                  } @else if (channel.voice_access_role === 'stranger') {
-                    <small>По запросу владельцу</small>
-                  }
-                </div>
-              </button>
-              @if (canManageActiveGroup()) {
-                <button
-                  class="channel-action"
-                  type="button"
-                  title="Удалить канал"
-                  [disabled]="isDeletingChannel(channel.id)"
-                  (click)="deleteChannel(channel)"
-                >
-                  {{ isDeletingChannel(channel.id) ? '...' : 'x' }}
-                </button>
-              }
-              </div>
-
-              @if (voiceParticipantsForChannel(channel.id).length) {
-                <div class="voice-roster">
-                  @for (participant of voiceParticipantsForChannel(channel.id); track participant.id) {
-                    <button
-                      class="voice-roster__member"
-                      [class.voice-roster__member--speaking]="voiceParticipantTone(participant) === 'speaking'"
-                      [class.voice-roster__member--blocked]="voiceParticipantTone(participant) === 'blocked'"
-                      [class.voice-roster__member--open]="voiceParticipantTone(participant) === 'open'"
-                      [class.voice-roster__member--muted]="voiceParticipantTone(participant) === 'muted'"
-                      type="button"
-                      (click)="openVoiceParticipantControls(participant.user_id, channel.id)"
-                    >
-                      <div class="voice-roster__avatar">
-                        @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
-                          <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
-                        } @else {
-                          <span>{{ displayNickInitials(participant.nick) }}</span>
-                        }
-                      </div>
-                      <div class="voice-roster__meta">
-                        <span class="voice-roster__name">{{ displayNick(participant.nick) }}</span>
-                      </div>
-                      <img
-                        class="voice-state-icon voice-state-icon--roster"
-                        [src]="voiceStateIconPath(participant)"
-                        [alt]="voiceStateIconAlt(participant)"
-                        [title]="voiceStateIconAlt(participant)"
-                      />
-                    </button>
-                  }
-                </div>
-              }
-            </div>
-          }
-        } @else {
-          <div class="rail-empty">
-            {{ workspaceLoading() ? 'Загружаем каналы...' : 'В этой группе пока нет голосовых каналов' }}
-          </div>
-        }
-      </section>
-      }
-    </aside>
-
-    <main class="workspace">
-      @if (workspaceOverlayVisible()) {
-        <div class="workspace-overlay">
-          <div class="workspace-overlay__loader"></div>
-          <span>{{ workspaceOverlayLabel() }}</span>
-        </div>
-      }
-
-      @if (showVoiceDock()) {
-        <section class="voice-dock">
-          <div class="voice-workspace__top voice-dock__top">
-            <button
-              class="secondary-button voice-mute-button voice-dock__mute"
-              [class.voice-mute-button--blocked]="voiceOwnerMuted()"
-              [class.voice-mute-button--off]="!voiceOwnerMuted() && voiceMuted()"
-              [class.voice-mute-button--on]="!voiceOwnerMuted() && !voiceMuted()"
-              type="button"
-              (click)="toggleVoiceMute()"
-              [attr.aria-label]="voiceMuteControlLabel()"
-              [attr.title]="voiceMuteControlLabel()"
-            >
-              {{ voiceOwnerMuted() ? 'Микрофон заблокирован' : voiceMuted() ? 'Включить микрофон' : 'Выключить микрофон' }}
-            </button>
-
-            <button class="voice-workspace__meta voice-dock__meta voice-dock__open" type="button" (click)="openConnectedVoiceChannel()">
-              <p class="eyebrow">Голос в фоне</p>
-              <strong>{{ connectedVoiceChannel()?.name }}</strong>
-              @if (voiceDockLabel()) {
-                <small>
-                  {{ voiceDockLabel() }}
-                  @if (voiceParticipants().length > 0) {
-                    <span> · участников: {{ voiceParticipants().length }}</span>
-                  }
-                </small>
-              }
-            </button>
-
-            <button
-              class="primary-button voice-leave-button voice-dock__leave"
-              type="button"
-              (click)="leaveVoiceChannel()"
-              aria-label="Выйти из голоса"
-              title="Выйти из голоса"
-            >
-              <img src="/assets/Phone outgoing.svg" alt="" />
-            </button>
-          </div>
-        </section>
-      }
-
-      @if (showVoiceWorkspaceShell()) {
-        <section class="voice-workspace">
-          <div class="voice-workspace__top">
-            @if (isInActiveVoiceChannel()) {
-              <button
-                class="secondary-button voice-mute-button voice-workspace__mute"
-                type="button"
-                (click)="toggleVoiceMute()"
-                [attr.aria-label]="voiceMuteControlLabel()"
-                [attr.title]="voiceMuteControlLabel()"
-              >
-                <img [src]="voiceMuteControlIconPath()" alt="" />
-              </button>
-            } @else {
-              <span class="voice-workspace__placeholder" aria-hidden="true"></span>
-            }
-
-            <div class="voice-workspace__meta">
-              <p class="eyebrow">Голосовой канал</p>
-              <strong>{{ activeChannel()?.name }}</strong>
-              @if (voiceStatusLabel() || activeVoiceRosterCount() > 0) {
-                <small>
-                  @if (voiceStatusLabel()) {
-                    <span>{{ voiceStatusLabel() }}</span>
-                  }
-                  @if (activeVoiceRosterCount() > 0) {
-                    <span>{{ voiceStatusLabel() ? ' · ' : '' }}участников: {{ activeVoiceRosterCount() }}</span>
-                  }
-                </small>
-              }
-            </div>
-
-            @if (isInActiveVoiceChannel()) {
-              <button
-                class="primary-button voice-leave-button voice-workspace__leave"
-                type="button"
-                (click)="leaveVoiceChannel()"
-                aria-label="Отключиться"
-                title="Отключиться"
-              >
-                <img src="/assets/Phone outgoing.svg" alt="" />
-              </button>
-            } @else {
-              <div class="voice-workspace__join">
-                <button
-                  class="secondary-button voice-connect-button"
-                  type="button"
-                  (click)="joinActiveVoiceChannel()"
-                  [attr.aria-label]="hasVoiceConnection() ? 'Перейти в голосовой канал' : 'Подключиться к голосовому каналу'"
-                  [attr.title]="hasVoiceConnection() ? 'Перейти в голосовой канал' : 'Подключиться к голосовому каналу'"
-                >
-                  <img src="/assets/Phone_connect.svg" alt="" />
-                </button>
-              </div>
-            }
-          </div>
-
-          <div class="voice-workspace__tabs" role="tablist" aria-label="Режим голосового канала">
-            <button
-              class="voice-workspace__tab"
-              [class.voice-workspace__tab--active]="voiceWorkspaceTab() === 'chat'"
-              type="button"
-              role="tab"
-              [attr.aria-selected]="voiceWorkspaceTab() === 'chat'"
-              (click)="selectVoiceWorkspaceTab('chat')"
-            >
-              Чат
-            </button>
-            <button
-              class="voice-workspace__tab"
-              [class.voice-workspace__tab--active]="voiceWorkspaceTab() === 'channel'"
-              type="button"
-              role="tab"
-              [attr.aria-selected]="voiceWorkspaceTab() === 'channel'"
-              (click)="selectVoiceWorkspaceTab('channel')"
-            >
-              В канале
-              <span>{{ activeVoiceRosterCount() }}</span>
-            </button>
-          </div>
-        </section>
-      }
-
-      <section class="workspace-body">
-        @if (showVoiceWorkspaceChannel()) {
-          <section class="voice-stage voice-stage--channel-tab">
-            <div class="voice-roster-list">
-              @for (participant of activeVoiceRoster(); track participant.id) {
-                  <button
-                    class="voice-card voice-card--compact"
-                    [class.voice-card--self]="participant.is_self"
-                    [class.voice-card--speaking]="voiceParticipantTone(participant) === 'speaking'"
-                    [class.voice-card--blocked]="voiceParticipantTone(participant) === 'blocked'"
-                    [class.voice-card--open]="voiceParticipantTone(participant) === 'open'"
-                    [class.voice-card--muted]="voiceParticipantTone(participant) === 'muted'"
-                    type="button"
-                    (click)="openVoiceParticipantControls(participant.user_id, activeChannel()?.id ?? '')"
-                  >
-                  <div class="voice-card__avatar">
-                    @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
-                    } @else {
-                      <span>{{ displayNickInitials(participant.nick) }}</span>
-                    }
-                  </div>
-                  <div class="voice-card__body voice-card__body--compact">
-                    <div class="voice-card__title">
-                      <strong>{{ displayNick(participant.nick) }}</strong>
-                      @if (participant.is_self) {
-                        <small class="voice-card__self">вы</small>
-                      }
-                    </div>
-                    <img
-                      class="voice-state-icon voice-state-icon--card"
-                      [src]="voiceStateIconPath(participant)"
-                      [alt]="voiceStateIconAlt(participant)"
-                      [title]="voiceStateIconAlt(participant)"
-                    />
-                  </div>
-                </button>
-              }
-            </div>
-          </section>
-        }
-
-        @if (showVoiceWorkspaceChat() || !canUseActiveChannelChat()) {
-          <div class="message-list" #messageList (scroll)="onMessageListScroll()">
-            @if (showVoiceWorkspaceChat()) {
-              @if (!messagesLoading()) {
-                @if (messagesHasMore()) {
-                  <div class="message-list__status">
-                    {{ messagesLoadingMore() ? 'Подгружаем старые сообщения...' : 'Прокрутите вверх, чтобы подгрузить старые сообщения' }}
-                  </div>
-                }
-
-                @if (messageError()) {
-                  <div class="message-list__status message-list__status--error">{{ messageError() }}</div>
-                }
-
-                @if (messages().length) {
-                  @for (message of messages(); track message.id) {
-                    <article class="message-card" [class.message-card--self]="message.author.id === currentUser()?.id">
-                      <div
-                        class="message-card__avatar"
-                        [style.--avatar-accent]="message.author.id === currentUser()?.id ? '#ff9f43' : '#3dd6c6'"
-                      >
-                        @if (userAvatarUrl(message.author.id, message.author.avatar_updated_at); as avatarUrl) {
-                          <img [src]="avatarUrl" [alt]="displayNick(message.author.nick)" loading="lazy" />
-                        } @else {
-                          <span>{{ displayNickInitials(message.author.nick) }}</span>
-                        }
-                      </div>
-                      <div class="message-card__body">
-                        <div class="message-card__meta">
-                          <div class="message-card__author">
-                            <strong>{{ displayNick(message.author.nick) }}</strong>
-                            @if (message.author.nick !== displayNick(message.author.nick)) {
-                              <span>&#64;{{ message.author.nick }}</span>
-                            }
-                          </div>
-                          <time>{{ formatMessageTime(message.created_at) }}</time>
-                        </div>
-                        @if (message.reply_to; as replyTo) {
-                          <button class="message-card__reply-preview" type="button" (click)="startReplyToMessage(message)">
-                            <span class="message-card__reply-label">
-                              Ответ на {{ displayNick(replyTo.author.nick) }}
-                            </span>
-                            <strong>{{ replyPreviewText(replyTo) }}</strong>
-                          </button>
-                        }
-                        @if (message.content) {
-                          <p class="message-card__text">{{ message.content }}</p>
-                        }
-                        @if (message.attachments.length) {
-                          <div class="message-attachments">
-                            @for (attachment of message.attachments; track attachment.id) {
-                              @if (isInlineImageAttachment(attachment)) {
-                                @if (imagePreviewUrl(attachment); as previewUrl) {
-                                  <button
-                                    class="attachment-preview"
-                                    type="button"
-                                    (click)="openImageAttachment(attachment)"
-                                  >
-                                    <img [src]="previewUrl" [alt]="attachment.filename" loading="lazy" />
-                                    <span>{{ attachment.filename }}</span>
-                                  </button>
-                                } @else {
-                                  <button class="attachment-chip" type="button" [disabled]="isAttachmentPreviewLoading(attachment)" (click)="openImageAttachment(attachment)">
-                                    <strong>{{ attachment.filename }}</strong>
-                                    <small>
-                                      {{ isAttachmentPreviewLoading(attachment) ? 'Загружаем изображение...' : 'Показать · ' + formatFileSize(attachment.size_bytes) }}
-                                    </small>
-                                  </button>
-                                }
-                              } @else if (isInlineAudioAttachment(attachment)) {
-                                @if (audioPreviewUrl(attachment); as audioUrl) {
-                                  <div class="audio-attachment">
-                                    <div class="audio-attachment__meta">
-                                      <strong>{{ attachment.filename }}</strong>
-                                      <small>{{ formatFileSize(attachment.size_bytes) }}</small>
-                                    </div>
-                                    <audio [src]="audioUrl" controls preload="none"></audio>
-                                  </div>
-                                } @else {
-                                  <button class="attachment-chip" type="button" [disabled]="isAttachmentPreviewLoading(attachment)" (click)="loadAudioAttachment(attachment)">
-                                    <strong>{{ attachment.filename }}</strong>
-                                    <small>
-                                      {{ isAttachmentPreviewLoading(attachment) ? 'Загружаем аудио...' : 'Прослушать · ' + formatFileSize(attachment.size_bytes) }}
-                                    </small>
-                                  </button>
-                                }
-                              } @else {
-                                <button class="attachment-chip" type="button" (click)="downloadAttachment(attachment)">
-                                  <strong>{{ attachment.filename }}</strong>
-                                  <small>{{ formatFileSize(attachment.size_bytes) }}</small>
-                                </button>
-                              }
-                            }
-                          </div>
-                        }
-                        <div class="message-card__actions">
-                          <button
-                            class="message-card__action"
-                            type="button"
-                            title="Ответить"
-                            (click)="startReplyToMessage(message)"
-                          >
-                            Ответить
-                          </button>
-                        </div>
-                        <div class="message-reactions">
-                          @for (reaction of message.reactions; track reaction.code) {
-                            <button
-                              class="reaction-chip"
-                              type="button"
-                              [class.reaction-chip--active]="reaction.reacted"
-                              [disabled]="isMessageReactionPending(message.id, reaction.code)"
-                              [attr.title]="reactionLabel(reaction.code)"
-                              (click)="toggleMessageReaction(message, reaction.code)"
-                            >
-                              @if (reactionAssetPath(reaction.code); as assetPath) {
-                                <img
-                                  class="reaction-chip__emoji-image"
-                                  [src]="assetPath"
-                                  [alt]="reactionLabel(reaction.code)"
-                                />
-                              } @else {
-                                <span class="reaction-chip__emoji">{{ reactionEmoji(reaction.code) }}</span>
-                              }
-                              <span class="reaction-chip__count">{{ reaction.count }}</span>
-                            </button>
-                          }
-                          <button
-                            class="reaction-picker-toggle"
-                            type="button"
-                            [class.reaction-picker-toggle--active]="openedMessageReactionPickerId() === message.id"
-                            title="Добавить реакцию"
-                            (click)="toggleMessageReactionPicker(message.id)"
-                          >
-                            <span>🙂</span>
-                          </button>
-                        </div>
-                        @if (openedMessageReactionPickerId() === message.id) {
-                          <div class="reaction-picker">
-                            @for (option of messageReactionOptions; track option.code) {
-                              <button
-                                class="reaction-picker__option"
-                                type="button"
-                                [class.reaction-picker__option--active]="isMessageReactionPending(message.id, option.code)"
-                                [attr.title]="option.label"
-                                (click)="toggleMessageReaction(message, option.code)"
-                              >
-                                @if (option.assetPath) {
-                                  <img
-                                    class="reaction-picker__emoji-image"
-                                    [src]="option.assetPath"
-                                    [alt]="option.label"
-                                  />
-                                } @else {
-                                  <span class="reaction-picker__emoji">{{ option.emoji }}</span>
-                                }
-                                <span class="reaction-picker__label">{{ option.label }}</span>
-                              </button>
-                            }
-                          </div>
-                        }
-                        @if (message.author.id === currentUser()?.id && message.read_by.length) {
-                          <div class="message-card__read-receipt">
-                            {{ messageReadReceiptLabel(message) }}
-                          </div>
-                        }
-                      </div>
-                    </article>
-                  }
-                } @else if (!messageError()) {
-                  <div class="message-list__empty">Сообщений пока нет</div>
-                }
-              }
-            } @else {
-              <div class="message-list__status">Выберите канал, чтобы открыть чат.</div>
-            }
-          </div>
-        }
-
-        @if (showVoiceWorkspaceChat() || !canUseActiveChannelChat()) {
-          <section class="composer">
-            @if (showVoiceWorkspaceChat()) {
-            <input #attachmentInput hidden type="file" multiple (change)="onAttachmentSelection($event)" />
-
-            @if (selectedReplyMessage(); as replyMessage) {
-              <div class="composer__reply">
-                <div class="composer__reply-copy">
-                  <span class="composer__reply-label">
-                    Ответ на {{ displayNick(replyMessage.author.nick) }}
-                  </span>
-                  <strong>{{ replyPreviewText(replyMessage) }}</strong>
-                </div>
-                <button class="composer__reply-close" type="button" (click)="clearReplyTarget()">×</button>
-              </div>
-            }
-
-            @if (pendingFiles().length) {
-              <div class="composer__files">
-                @for (file of pendingFiles(); track file.name + '-' + $index) {
-                  <button
-                    class="attachment-chip attachment-chip--pending composer-file"
-                    type="button"
-                    (click)="removePendingFile($index)"
-                  >
-                    <strong>{{ file.name }}</strong>
-                    <small>{{ formatFileSize(file.size) }}</small>
-                    <span class="composer-file__remove">×</span>
-                  </button>
-                }
-              </div>
-            }
-
-            <div class="composer__surface" [class.composer__surface--busy]="messageSubmitting()">
-              <button
-                class="secondary-button composer__attach"
-                type="button"
-                [disabled]="messageSubmitting()"
-                (click)="openAttachmentPicker()"
-                aria-label="Прикрепить файл"
-                title="Прикрепить файл"
-              >
-                +
-              </button>
-
-              <label class="composer__field">
-                <textarea
-                  #messageTextarea
-                  [ngModel]="messageDraft()"
-                  (ngModelChange)="onMessageDraftChange($event)"
-                  (keydown)="onMessageComposerKeydown($event)"
-                  (paste)="onMessageComposerPaste($event)"
-                  [disabled]="messageSubmitting()"
-                  placeholder="Сообщение"
-                  rows="1"
-                ></textarea>
-              </label>
-
-              <button
-                class="primary-button composer__submit"
-                type="button"
-                [disabled]="!canSendMessage()"
-                (click)="submitMessage()"
-                aria-label="Отправить сообщение"
-                title="Отправить сообщение"
-              >
-                @if (messageSubmitting()) {
-                  ...
-                } @else {
-                  <img src="/assets/Enter.svg" alt="" />
-                }
-              </button>
-            </div>
-
-            <div class="composer__meta">
-              <small>
-                @if (pendingFiles().length) {
-                  Файлов: {{ pendingFiles().length }} · до 50 МБ на файл
-                } @else {
-                  Можно отправлять текст и файлы до 50 МБ, а картинки вставлять из буфера
-                }
-              </small>
-            </div>
-          } @else {
-            <div class="composer__surface composer__surface--disabled">
-              <button class="secondary-button composer__attach" type="button" disabled>+</button>
-              <label class="composer__field">
-                <textarea disabled placeholder="Выберите канал" rows="1"></textarea>
-              </label>
-              <button class="primary-button composer__submit" type="button" disabled>
-                <img src="/assets/Enter.svg" alt="" />
-              </button>
-            </div>
-            }
-          </section>
-        }
-      </section>
-    </main>
-
-    <aside class="member-rail" [class.member-rail--mobile-open]="mobilePanel() === 'members'">
-      <div class="mobile-panel-head">
-        <span>Участники</span>
-        <button class="mobile-panel-close" type="button" aria-label="Закрыть участников" (click)="closeMobilePanel()">
-          ×
-        </button>
-      </div>
-
-      <section class="panel-card profile-card">
-        <input
-          #profileAvatarInput
-          hidden
-          type="file"
-          accept="image/png,image/jpeg"
-          (change)="onProfileAvatarSelection($event)"
-        />
-        <div class="profile-toolbar">
+    @if (sideMenuOpen()) {
+      <button class="drawer-backdrop" type="button" aria-label="??????? ????" (click)="closeSideMenu()"></button>
+      <aside class="side-drawer">
+        <div class="side-drawer__profile">
           <button
             class="profile-avatar-button"
             type="button"
             [disabled]="!currentUser() || profileSaving()"
-            title="Нажмите, чтобы загрузить аватарку"
+            title="???????, ????? ????????? ????????"
             (click)="openProfileAvatarPicker('instant')"
           >
             @if (currentUserAvatarUrl(); as avatarUrl) {
@@ -1047,91 +179,512 @@
               <span>{{ displayNickInitials(currentUser()?.nick ?? '??') }}</span>
             }
           </button>
-          <button
-            class="secondary-button profile-edit-button"
-            type="button"
-            aria-label="Профиль"
-            title="Профиль"
-            (click)="openProfileEditor()"
-          >
-            <img src="/assets/User_Profile.svg" alt="" />
-          </button>
-          <button class="icon-button profile-settings-button" type="button" aria-label="Настройки" title="Настройки" (click)="openVoiceSettings()">⚙</button>
-          <button
-            class="secondary-button profile-logout"
-            type="button"
-            aria-label="Выйти"
-            title="Выйти"
-            (click)="logout()"
-          >
-            <img src="/assets/Log out.svg" alt="" />
-          </button>
-        </div>
-
-        <div class="profile-character">
-          <p class="eyebrow">Ник</p>
-          <strong>{{ displayNick(currentUser()?.nick ?? 'Ожидание авторизации') }}</strong>
-        </div>
-        @if (isAdmin()) {
-          <button
-            class="secondary-button profile-admin-button"
-            type="button"
-            title="Управление доступом к голосовым каналам"
-            (click)="openVoiceAdminPanel()"
-          >
-            Доступ
-          </button>
-        }
-        @if (profileError()) {
-          <p class="session-note session-note--error">{{ profileError() }}</p>
-        } @else if (profileNotice()) {
-          <p class="session-note session-note--success">{{ profileNotice() }}</p>
-        }
-        @if (hasVoiceConnection()) {
-          <p class="session-note">В голосе: {{ connectedVoiceChannel()?.name }}</p>
-        }
-      </section>
-
-      <section class="panel-card panel-card--members">
-        <div class="panel-header">
-          <h3>Участники</h3>
-          <small>{{ groupMembers().length }}</small>
-        </div>
-
-        @if (groupMembers().length) {
-          <div class="members-list">
-            @for (member of groupMembers(); track member.userId) {
-              <button
-                class="member-row"
-                [class.member-row--selected]="selectedMember()?.userId === member.userId"
-                type="button"
-                (click)="openMemberCall(member)"
-              >
-                <span class="member-row__identity">
-                  <span class="member-avatar" [class.member-avatar--online]="member.isOnline">
-                    @if (userAvatarUrl(member.userId, member.avatarUpdatedAt); as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="displayNick(member.nick)" loading="lazy" />
-                    } @else {
-                      <span>{{ displayNickInitials(member.nick) }}</span>
-                    }
-                  </span>
-                </span>
-                <strong class="member-row__name">
-                  {{ displayNick(member.nick) }}
-                  @if (member.isSelf) {
-                    <span class="member-row__self">вы</span>
-                  }
-                </strong>
-              </button>
+          <div class="side-drawer__identity">
+            <strong>{{ displayNick(currentUser()?.nick ?? '') }}</strong>
+            @if (currentUser(); as user) {
+              <small>ID: {{ user.id }}</small>
+              <span>{{ user.email }}</span>
             }
           </div>
-        } @else {
-          <div class="panel-empty">
-            {{ workspaceLoading() ? 'Загружаем участников...' : 'В этой группе пока нет участников' }}
+        </div>
+
+        <div class="side-drawer__actions">
+          <button class="side-drawer__action" type="button" (click)="closeSideMenu(); openProfileEditor()">
+            <img src="/assets/User_Profile.svg" alt="" />
+            <span>???????</span>
+          </button>
+          <button class="side-drawer__action" type="button" (click)="openCreateGroupShortcut()">
+            <span>?</span>
+            <span>??????? ??????</span>
+          </button>
+          <button class="side-drawer__action" type="button" (click)="openAddUserShortcut()">
+            <span>?</span>
+            <span>???????? ????????????</span>
+          </button>
+          @if (isAdmin()) {
+            <button class="side-drawer__action" type="button" (click)="closeSideMenu(); openVoiceAdminPanel()">
+              <span>?</span>
+              <span>?????? ? ??????</span>
+            </button>
+          }
+          <button class="side-drawer__action" type="button" (click)="closeSideMenu(); openVoiceSettings()">
+            <span>?</span>
+            <span>?????????</span>
+          </button>
+          <button class="side-drawer__action side-drawer__action--danger" type="button" (click)="closeSideMenu(); logout()">
+            <img src="/assets/Log out.svg" alt="" />
+            <span>?????</span>
+          </button>
+        </div>
+      </aside>
+    }
+
+    @if (mobilePanel() === 'servers') {
+      <button class="mobile-backdrop" type="button" aria-label="??????? ??????" (click)="closeMobilePanel()"></button>
+    }
+
+    <div class="messenger-layout">
+      <aside class="conversation-sidebar" [class.conversation-sidebar--mobile-open]="mobilePanel() === 'servers'">
+        <div class="conversation-sidebar__tabs">
+          <button
+            class="conversation-sidebar__tab"
+            [class.conversation-sidebar__tab--active]="isChatsMode()"
+            type="button"
+            (click)="selectWorkspaceMode('chats')"
+          >
+            ??????
+          </button>
+          <button
+            class="conversation-sidebar__tab"
+            [class.conversation-sidebar__tab--active]="isGroupsMode()"
+            type="button"
+            (click)="selectWorkspaceMode('groups')"
+          >
+            ?????????
+          </button>
+        </div>
+
+        <div class="conversation-sidebar__header">
+          <div>
+            <strong>{{ activeSpaceListTitle() }}</strong>
+            <small>{{ isChatsMode() ? '?????? ??????? ? ??????' : '?????? ? ????? ??????' }}</small>
+          </div>
+          <button
+            class="conversation-sidebar__add"
+            type="button"
+            [attr.title]="isChatsMode() ? '???????? ????????????' : '??????? ??????'"
+            [attr.aria-label]="isChatsMode() ? '???????? ????????????' : '??????? ??????'"
+            (click)="isChatsMode() ? openAddUserShortcut() : openCreateGroupShortcut()"
+          >
+            +
+          </button>
+        </div>
+
+        <div class="conversation-sidebar__list">
+          @if (isChatsMode()) {
+            @if (personalChatEntries().length) {
+              @for (space of personalChatEntries(); track space.id) {
+                @if (activeConversation()?.id === space.id ? activeConversation() : directConversationById(space.id); as conversation) {
+                  <button
+                    class="sidebar-entry"
+                    [class.sidebar-entry--active]="space.id === selectedServerId()"
+                    type="button"
+                    (click)="selectServer(space.id)"
+                  >
+                    <div class="sidebar-entry__avatar">
+                      @if (conversationIconUrl(conversation); as iconUrl) {
+                        <img [src]="iconUrl" [alt]="conversation.title" loading="lazy" />
+                      } @else {
+                        <span>{{ displayNickInitials(conversation.title) }}</span>
+                      }
+                    </div>
+                    <div class="sidebar-entry__copy">
+                      <strong>{{ conversation.title }}</strong>
+                      <small>{{ conversationMetaLabel(conversation) }}</small>
+                    </div>
+                  </button>
+                }
+              }
+            } @else {
+              <div class="sidebar-empty">?????? ????? ???? ???</div>
+            }
+          } @else {
+            @if (groupChatEntries().length) {
+              @for (space of groupChatEntries(); track space.id) {
+                @if (activeConversation()?.id === space.id ? activeConversation() : groupConversationById(space.id); as conversation) {
+                  <button
+                    class="sidebar-entry"
+                    [class.sidebar-entry--active]="space.id === selectedServerId()"
+                    type="button"
+                    (click)="selectServer(space.id)"
+                  >
+                    <div class="sidebar-entry__avatar sidebar-entry__avatar--group">
+                      @if (conversationIconUrl(conversation); as iconUrl) {
+                        <img [src]="iconUrl" [alt]="conversation.title" loading="lazy" />
+                      } @else {
+                        <span>{{ displayNickInitials(conversation.title) }}</span>
+                      }
+                    </div>
+                    <div class="sidebar-entry__copy">
+                      <strong>{{ conversation.title }}</strong>
+                      <small>{{ conversationMetaLabel(conversation) }}</small>
+                    </div>
+                  </button>
+                }
+              }
+            } @else {
+              <div class="sidebar-empty">????? ???? ???</div>
+            }
+          }
+        </div>
+      </aside>
+
+      <main class="messenger-workspace">
+        @if (workspaceOverlayVisible()) {
+          <div class="workspace-overlay">
+            <div class="workspace-overlay__loader"></div>
+            <span>{{ workspaceOverlayLabel() }}</span>
           </div>
         }
-      </section>
-    </aside>
+
+        @if (activeServer()) {
+          <section class="conversation-head">
+            <div class="conversation-head__identity">
+              <div class="conversation-head__avatar" [class.conversation-head__avatar--group]="isGroupsMode()">
+                @if (activeConversationIconUrl(); as iconUrl) {
+                  <img [src]="iconUrl" [alt]="activeServer()?.name ?? ''" loading="lazy" />
+                } @else {
+                  <span>{{ displayNickInitials(activeServer()?.name ?? 'KVA') }}</span>
+                }
+              </div>
+              <div class="conversation-head__copy">
+                <p class="eyebrow">{{ isChatsMode() ? '?????? ???' : '??????' }}</p>
+                <strong>{{ activeServer()?.name }}</strong>
+                <small>{{ activeSpaceMetaLabel() }}</small>
+              </div>
+            </div>
+
+            <div class="conversation-head__actions">
+              @if (isChatsMode() && activeDirectPeer()) {
+                <button class="secondary-button conversation-head__action" type="button" (click)="openActiveDirectPeerCall()">
+                  <img src="/assets/Phone_connect.svg" alt="" />
+                </button>
+              }
+              @if (isGroupsMode() && canManageActiveGroup()) {
+                <button class="secondary-button conversation-head__action" type="button" (click)="openAddGroupMemberModal()">
+                  ???????? ?????????
+                </button>
+              }
+              @if (isGroupsMode() && canEditActiveServerIcon()) {
+                <button class="secondary-button conversation-head__action" type="button" (click)="openServerIconModal()">
+                  ??????
+                </button>
+              }
+            </div>
+          </section>
+
+          @if (isGroupsMode()) {
+            <section class="group-overview">
+              <div class="group-overview__members">
+                @for (member of groupMembers(); track member.userId) {
+                  <button class="group-member-pill" type="button" (click)="openMemberCall(member)">
+                    <span class="member-avatar" [class.member-avatar--online]="member.isOnline">
+                      @if (userAvatarUrl(member.userId, member.avatarUpdatedAt); as avatarUrl) {
+                        <img [src]="avatarUrl" [alt]="displayNick(member.nick)" loading="lazy" />
+                      } @else {
+                        <span>{{ displayNickInitials(member.nick) }}</span>
+                      }
+                    </span>
+                    <span class="group-member-pill__copy">
+                      <strong>{{ displayNick(member.nick) }}</strong>
+                      <small>ID: {{ member.userId }}</small>
+                    </span>
+                  </button>
+                }
+              </div>
+
+              @if (activeGroupVoiceChannel(); as groupVoiceChannel) {
+                <div class="group-voice-card" [class.group-voice-card--active]="connectedVoiceChannelId() === groupVoiceChannel.id">
+                  <div class="group-voice-card__copy">
+                    <p class="eyebrow">????? ????????? ???</p>
+                    <strong>{{ groupVoiceChannel.name }}</strong>
+                    <small>
+                      @if (connectedVoiceChannelId() === groupVoiceChannel.id) {
+                        ?? ? ???????
+                      } @else {
+                        ????? ????? ? ????? ??????
+                      }
+                      ? ??????????: {{ activeGroupVoiceParticipants().length }}
+                    </small>
+                  </div>
+                  <button class="secondary-button group-voice-card__action" type="button" (click)="toggleActiveGroupVoice()">
+                    <img [src]="connectedVoiceChannelId() === groupVoiceChannel.id ? '/assets/Phone outgoing.svg' : '/assets/Phone_connect.svg'" alt="" />
+                  </button>
+                </div>
+              }
+            </section>
+          }
+
+          <section class="conversation-stream">
+            <div class="message-list" #messageList (scroll)="onMessageListScroll()">
+              @if (canUseActiveChannelChat()) {
+                @if (!messagesLoading()) {
+                  @if (messagesHasMore()) {
+                    <div class="message-list__status">
+                      {{ messagesLoadingMore() ? '?????????? ?????? ?????????...' : '?????????? ?????, ????? ?????????? ?????? ?????????' }}
+                    </div>
+                  }
+
+                  @if (messageError()) {
+                    <div class="message-list__status message-list__status--error">{{ messageError() }}</div>
+                  }
+
+                  @if (messages().length) {
+                    @for (message of messages(); track message.id) {
+                      <article class="message-card" [class.message-card--self]="message.author.id === currentUser()?.id">
+                        <div
+                          class="message-card__avatar"
+                          [style.--avatar-accent]="message.author.id === currentUser()?.id ? '#9dfd38' : '#3dd6c6'"
+                        >
+                          @if (userAvatarUrl(message.author.id, message.author.avatar_updated_at); as avatarUrl) {
+                            <img [src]="avatarUrl" [alt]="displayNick(message.author.nick)" loading="lazy" />
+                          } @else {
+                            <span>{{ displayNickInitials(message.author.nick) }}</span>
+                          }
+                        </div>
+                        <div class="message-card__body">
+                          <div class="message-card__meta">
+                            <div class="message-card__author">
+                              <strong>{{ displayNick(message.author.nick) }}</strong>
+                              <span>ID: {{ message.author.id }}</span>
+                            </div>
+                            <time>{{ formatMessageTime(message.created_at) }}</time>
+                          </div>
+                          @if (message.reply_to; as replyTo) {
+                            <button class="message-card__reply-preview" type="button" (click)="startReplyToMessage(message)">
+                              <span class="message-card__reply-label">
+                                ????? ?? {{ displayNick(replyTo.author.nick) }}
+                              </span>
+                              <strong>{{ replyPreviewText(replyTo) }}</strong>
+                            </button>
+                          }
+                          @if (message.content) {
+                            <p class="message-card__text">{{ message.content }}</p>
+                          }
+                          @if (message.attachments.length) {
+                            <div class="message-attachments">
+                              @for (attachment of message.attachments; track attachment.id) {
+                                @if (isInlineImageAttachment(attachment)) {
+                                  @if (imagePreviewUrl(attachment); as previewUrl) {
+                                    <button
+                                      class="attachment-preview"
+                                      type="button"
+                                      (click)="openImageAttachment(attachment)"
+                                    >
+                                      <img [src]="previewUrl" [alt]="attachment.filename" loading="lazy" />
+                                      <span>{{ attachment.filename }}</span>
+                                    </button>
+                                  } @else {
+                                    <button class="attachment-chip" type="button" [disabled]="isAttachmentPreviewLoading(attachment)" (click)="openImageAttachment(attachment)">
+                                      <strong>{{ attachment.filename }}</strong>
+                                      <small>
+                                        {{ isAttachmentPreviewLoading(attachment) ? '????????? ???????????...' : '???????? ? ' + formatFileSize(attachment.size_bytes) }}
+                                      </small>
+                                    </button>
+                                  }
+                                } @else if (isInlineAudioAttachment(attachment)) {
+                                  @if (audioPreviewUrl(attachment); as audioUrl) {
+                                    <div class="audio-attachment">
+                                      <div class="audio-attachment__meta">
+                                        <strong>{{ attachment.filename }}</strong>
+                                        <small>{{ formatFileSize(attachment.size_bytes) }}</small>
+                                      </div>
+                                      <audio [src]="audioUrl" controls preload="none"></audio>
+                                    </div>
+                                  } @else {
+                                    <button class="attachment-chip" type="button" [disabled]="isAttachmentPreviewLoading(attachment)" (click)="loadAudioAttachment(attachment)">
+                                      <strong>{{ attachment.filename }}</strong>
+                                      <small>
+                                        {{ isAttachmentPreviewLoading(attachment) ? '????????? ?????...' : '?????????? ? ' + formatFileSize(attachment.size_bytes) }}
+                                      </small>
+                                    </button>
+                                  }
+                                } @else {
+                                  <button class="attachment-chip" type="button" (click)="downloadAttachment(attachment)">
+                                    <strong>{{ attachment.filename }}</strong>
+                                    <small>{{ formatFileSize(attachment.size_bytes) }}</small>
+                                  </button>
+                                }
+                              }
+                            </div>
+                          }
+                          <div class="message-card__actions">
+                            <button
+                              class="message-card__action"
+                              type="button"
+                              title="????????"
+                              (click)="startReplyToMessage(message)"
+                            >
+                              ????????
+                            </button>
+                          </div>
+                          <div class="message-reactions">
+                            @for (reaction of message.reactions; track reaction.code) {
+                              <button
+                                class="reaction-chip"
+                                type="button"
+                                [class.reaction-chip--active]="reaction.reacted"
+                                [disabled]="isMessageReactionPending(message.id, reaction.code)"
+                                [attr.title]="reactionLabel(reaction.code)"
+                                (click)="toggleMessageReaction(message, reaction.code)"
+                              >
+                                @if (reactionAssetPath(reaction.code); as assetPath) {
+                                  <img
+                                    class="reaction-chip__emoji-image"
+                                    [src]="assetPath"
+                                    [alt]="reactionLabel(reaction.code)"
+                                  />
+                                } @else {
+                                  <span class="reaction-chip__emoji">{{ reactionEmoji(reaction.code) }}</span>
+                                }
+                                <span class="reaction-chip__count">{{ reaction.count }}</span>
+                              </button>
+                            }
+                            <button
+                              class="reaction-picker-toggle"
+                              type="button"
+                              [class.reaction-picker-toggle--active]="openedMessageReactionPickerId() === message.id"
+                              title="???????? ???????"
+                              (click)="toggleMessageReactionPicker(message.id)"
+                            >
+                              <span>??</span>
+                            </button>
+                          </div>
+                          @if (openedMessageReactionPickerId() === message.id) {
+                            <div class="reaction-picker">
+                              @for (option of messageReactionOptions; track option.code) {
+                                <button
+                                  class="reaction-picker__option"
+                                  type="button"
+                                  [class.reaction-picker__option--active]="isMessageReactionPending(message.id, option.code)"
+                                  [attr.title]="option.label"
+                                  (click)="toggleMessageReaction(message, option.code)"
+                                >
+                                  @if (option.assetPath) {
+                                    <img
+                                      class="reaction-picker__emoji-image"
+                                      [src]="option.assetPath"
+                                      [alt]="option.label"
+                                    />
+                                  } @else {
+                                    <span class="reaction-picker__emoji">{{ option.emoji }}</span>
+                                  }
+                                  <span class="reaction-picker__label">{{ option.label }}</span>
+                                </button>
+                              }
+                            </div>
+                          }
+                          @if (message.author.id === currentUser()?.id && message.read_by.length) {
+                            <div class="message-card__read-receipt">
+                              {{ messageReadReceiptLabel(message) }}
+                            </div>
+                          }
+                        </div>
+                      </article>
+                    }
+                  } @else if (!messageError()) {
+                    <div class="message-list__empty">????????? ???? ???</div>
+                  }
+                }
+              } @else {
+                <div class="message-list__status">???????? ???, ????? ?????? ?????????.</div>
+              }
+            </div>
+
+            <section class="composer">
+              @if (canUseActiveChannelChat()) {
+                <input #attachmentInput hidden type="file" multiple (change)="onAttachmentSelection($event)" />
+
+                @if (selectedReplyMessage(); as replyMessage) {
+                  <div class="composer__reply">
+                    <div class="composer__reply-copy">
+                      <span class="composer__reply-label">
+                        ????? ?? {{ displayNick(replyMessage.author.nick) }}
+                      </span>
+                      <strong>{{ replyPreviewText(replyMessage) }}</strong>
+                    </div>
+                    <button class="composer__reply-close" type="button" (click)="clearReplyTarget()">?</button>
+                  </div>
+                }
+
+                @if (pendingFiles().length) {
+                  <div class="composer__files">
+                    @for (file of pendingFiles(); track file.name + '-' + $index) {
+                      <button
+                        class="attachment-chip attachment-chip--pending composer-file"
+                        type="button"
+                        (click)="removePendingFile($index)"
+                      >
+                        <strong>{{ file.name }}</strong>
+                        <small>{{ formatFileSize(file.size) }}</small>
+                        <span class="composer-file__remove">?</span>
+                      </button>
+                    }
+                  </div>
+                }
+
+                <div class="composer__surface" [class.composer__surface--busy]="messageSubmitting()">
+                  <button
+                    class="secondary-button composer__attach"
+                    type="button"
+                    [disabled]="messageSubmitting()"
+                    (click)="openAttachmentPicker()"
+                    aria-label="?????????? ????"
+                    title="?????????? ????"
+                  >
+                    +
+                  </button>
+
+                  <label class="composer__field">
+                    <textarea
+                      #messageTextarea
+                      [ngModel]="messageDraft()"
+                      (ngModelChange)="onMessageDraftChange($event)"
+                      (keydown)="onMessageComposerKeydown($event)"
+                      (paste)="onMessageComposerPaste($event)"
+                      [disabled]="messageSubmitting()"
+                      placeholder="???????? ?????????"
+                      rows="1"
+                    ></textarea>
+                  </label>
+
+                  <button
+                    class="primary-button composer__submit"
+                    type="button"
+                    [disabled]="!canSendMessage()"
+                    (click)="submitMessage()"
+                    aria-label="????????? ?????????"
+                    title="????????? ?????????"
+                  >
+                    @if (messageSubmitting()) {
+                      ...
+                    } @else {
+                      <img src="/assets/Enter.svg" alt="" />
+                    }
+                  </button>
+                </div>
+
+                <div class="composer__meta">
+                  <small>
+                    @if (pendingFiles().length) {
+                      ??????: {{ pendingFiles().length }} ? ?? 50 ?? ?? ????
+                    } @else {
+                      ????? ?????????? ?????, ????? ? ????????? ???????? ?? ??????
+                    }
+                  </small>
+                </div>
+              } @else {
+                <div class="composer__surface composer__surface--disabled">
+                  <button class="secondary-button composer__attach" type="button" disabled>+</button>
+                  <label class="composer__field">
+                    <textarea disabled placeholder="???????? ???" rows="1"></textarea>
+                  </label>
+                  <button class="primary-button composer__submit" type="button" disabled>
+                    <img src="/assets/Enter.svg" alt="" />
+                  </button>
+                </div>
+              }
+            </section>
+          </section>
+        } @else {
+          <section class="workspace-empty-state">
+            <img class="workspace-empty-state__logo" src="/assets/KVA-chat.png" alt="KVA Chat" />
+            <strong>???????? ??? ??? ??????</strong>
+            <small>????? ????? ??????? ????? ??? ??????? ????????? ?????????</small>
+          </section>
+        }
+      </main>
+    </div>
   </div>
 }
 
@@ -1804,10 +1357,22 @@
 
         @if (conversationCreateTab() === 'direct') {
           <div class="conversation-create__section">
-            <p class="modal-note">Выберите участника, чтобы открыть личный чат 1-на-1.</p>
+            <label class="form-field">
+              <span>Поиск по нику, почте или ID</span>
+              <input
+                [ngModel]="directDirectoryQuery()"
+                (ngModelChange)="directDirectoryQuery.set($event)"
+                name="conversation_direct_query"
+                maxlength="120"
+                placeholder="Введите ник или ID пользователя"
+                type="text"
+              />
+            </label>
+
+            <p class="modal-note">Выберите участника, чтобы открыть личный чат или начать звонок.</p>
 
             <div class="conversation-picker-list">
-              @for (user of createConversationAvailableUsers(); track user.user_id) {
+              @for (user of personalDirectoryCandidates(); track user.user_id) {
                 <button
                   class="conversation-picker-row"
                   [class.conversation-picker-row--active]="createConversationForm.directUserId === user.user_id"
@@ -1823,6 +1388,7 @@
                   </span>
                   <span class="conversation-picker-row__copy">
                     <strong>{{ displayNick(user.nick) }}</strong>
+                    <small>ID: {{ user.user_id }}</small>
                     <small>&#64;{{ user.nick }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}</small>
                   </span>
                 </button>
@@ -1907,6 +1473,82 @@
             {{ createConversationLoading() ? 'Создаем...' : 'Создать мини-группу' }}
           </button>
         }
+      </div>
+    </section>
+  </div>
+}
+
+@if (addGroupMemberModalOpen()) {
+  <div class="modal-backdrop" (click)="closeAddGroupMemberModal()">
+    <section class="modal modal--wide modal--conversation-create" (click)="$event.stopPropagation()">
+      <div class="modal__header">
+        <div>
+          <p class="eyebrow">Группа</p>
+          <h3>Добавить участника</h3>
+        </div>
+        <button class="icon-button" type="button" (click)="closeAddGroupMemberModal()">×</button>
+      </div>
+
+      <div class="modal__body conversation-create">
+        <div class="conversation-create__section">
+          <label class="form-field">
+            <span>Поиск по нику, почте или ID</span>
+            <input
+              [ngModel]="addGroupMemberQuery()"
+              (ngModelChange)="addGroupMemberQuery.set($event)"
+              name="group_member_query"
+              maxlength="120"
+              placeholder="Введите ник или ID пользователя"
+              type="text"
+            />
+          </label>
+
+          <p class="modal-note">Можно добавить только уже известных вам пользователей.</p>
+
+          <div class="conversation-picker-list">
+            @for (user of activeGroupKnownCandidates(); track user.user_id) {
+              <button
+                class="conversation-picker-row"
+                [class.conversation-picker-row--active]="addGroupMemberUserId() === user.user_id"
+                type="button"
+                (click)="addGroupMemberUserId.set(user.user_id)"
+              >
+                <span class="conversation-picker-row__avatar">
+                  @if (userAvatarUrl(user.user_id, user.avatar_updated_at); as avatarUrl) {
+                    <img [src]="avatarUrl" [alt]="displayNick(user.nick)" loading="lazy" />
+                  } @else {
+                    <span>{{ displayNickInitials(user.nick) }}</span>
+                  }
+                </span>
+                <span class="conversation-picker-row__copy">
+                  <strong>{{ displayNick(user.nick) }}</strong>
+                  <small>ID: {{ user.user_id }}</small>
+                  <small>&#64;{{ user.nick }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}</small>
+                </span>
+              </button>
+            } @empty {
+              <div class="rail-empty">Нет подходящих пользователей для добавления</div>
+            }
+          </div>
+        </div>
+
+        @if (managementError()) {
+          <p class="modal-note modal-note--error">{{ managementError() }}</p>
+        } @else if (managementSuccess()) {
+          <p class="modal-note modal-note--success">{{ managementSuccess() }}</p>
+        }
+      </div>
+
+      <div class="modal__actions">
+        <button class="secondary-button" type="button" (click)="closeAddGroupMemberModal()">Отмена</button>
+        <button
+          class="primary-button"
+          type="button"
+          [disabled]="!addGroupMemberUserId() || addGroupMemberLoading()"
+          (click)="submitAddGroupMember()"
+        >
+          {{ addGroupMemberLoading() ? 'Добавляем...' : 'Добавить в группу' }}
+        </button>
       </div>
     </section>
   </div>

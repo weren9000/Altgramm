@@ -12,6 +12,7 @@ from app.api.dependencies.auth import get_current_user
 from app.db.models import Channel, ChannelType, MemberRole, Server, ServerKind, ServerMember, User
 from app.db.session import get_db
 from app.schemas.workspace import (
+    AddServerMemberRequest,
     ChannelSummary,
     CreateChannelRequest,
     CreateServerRequest,
@@ -24,6 +25,7 @@ from app.schemas.workspace import (
 from app.services.app_events import (
     publish_channels_updated,
     publish_channels_updated_from_sync,
+    publish_members_updated_from_sync,
     publish_servers_changed_from_sync,
 )
 from app.services.default_tavern import (
@@ -31,6 +33,7 @@ from app.services.default_tavern import (
     ensure_default_tavern_channel,
     is_default_tavern_channel,
 )
+from app.services.group_chat_defaults import ensure_group_chat_defaults
 from app.services.server_access import get_accessible_server
 from app.services.server_icons import get_default_server_icon_asset, normalize_server_icon_asset
 from app.services.site_presence import site_presence_manager
@@ -240,6 +243,9 @@ def list_server_channels(
     db: Session = Depends(get_db),
 ) -> list[ChannelSummary]:
     server, _ = get_accessible_server(db, server_id, current_user)
+    if server.kind == ServerKind.GROUP_CHAT:
+        ensure_group_chat_defaults(db, server)
+        db.commit()
     channels = db.execute(
         select(Channel).where(Channel.server_id == server.id).order_by(Channel.position, Channel.name)
     ).scalars().all()
@@ -280,6 +286,54 @@ def list_server_members(
     ]
 
 
+@router.post("/{server_id}/members", response_model=ServerMemberSummary)
+def add_server_member(
+    server_id: UUID,
+    payload: AddServerMemberRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ServerMemberSummary:
+    server, membership = get_accessible_server(db, server_id, current_user, allow_workspace_auto_join=False)
+    if server.kind == ServerKind.DIRECT:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Нельзя добавлять участников в личный чат")
+
+    _ensure_manage_permission(membership, current_user)
+
+    user = db.get(User, payload.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
+
+    existing_member = db.execute(
+        select(ServerMember).where(ServerMember.server_id == server.id, ServerMember.user_id == user.id)
+    ).scalar_one_or_none()
+    if existing_member is None:
+        existing_member = ServerMember(
+            server_id=server.id,
+            user_id=user.id,
+            role=MemberRole.MEMBER,
+            nickname=user.username,
+        )
+        db.add(existing_member)
+        db.flush()
+
+    if server.kind == ServerKind.GROUP_CHAT:
+        ensure_group_chat_defaults(db, server)
+    elif server.kind == ServerKind.WORKSPACE:
+        tavern_channels = db.execute(
+            select(Channel).where(Channel.server_id == server.id, Channel.type == ChannelType.VOICE, Channel.is_default_tavern.is_(True))
+        ).scalars().all()
+        ensure_default_tavern_access_for_users(db, tavern_channels, [user])
+
+    db.commit()
+    db.refresh(existing_member)
+
+    publish_members_updated_from_sync(server.id, reason="member_added")
+    publish_servers_changed_from_sync(reason="server_member_added")
+
+    online_user_ids = site_presence_manager.online_user_ids([user.id])
+    return _build_server_member_summary(existing_member, user, online_user_ids)
+
+
 @router.get("/{server_id}/voice-presence", response_model=list[VoiceChannelPresenceSummary])
 async def list_server_voice_presence(
     server_id: UUID,
@@ -287,6 +341,9 @@ async def list_server_voice_presence(
     db: Session = Depends(get_db),
 ) -> list[VoiceChannelPresenceSummary]:
     server, _ = get_accessible_server(db, server_id, current_user)
+    if server.kind == ServerKind.GROUP_CHAT:
+        ensure_group_chat_defaults(db, server)
+        db.commit()
     voice_channels = db.execute(
         select(Channel)
         .where(Channel.server_id == server.id, Channel.type == ChannelType.VOICE)

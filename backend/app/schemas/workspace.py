@@ -22,6 +22,10 @@ class CreateServerRequest(BaseModel):
     description: str | None = Field(default=None, max_length=500)
 
 
+class AddServerMemberRequest(BaseModel):
+    user_id: UUID
+
+
 class UpdateServerIconRequest(BaseModel):
     icon_asset: str | None = Field(default=None, max_length=255)
 

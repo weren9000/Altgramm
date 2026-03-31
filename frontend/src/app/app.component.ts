@@ -11,6 +11,7 @@ import { SystemApiService } from './core/api/system-api.service';
 import { WorkspaceApiService } from './core/api/workspace-api.service';
 import {
   ConversationDirectoryUser,
+  ConversationMemberPreview,
   ConversationSummary,
   CreateGroupConversationRequest,
 } from './core/models/conversation.models';
@@ -190,6 +191,12 @@ interface CreateChannelTrigger {
 interface CreateConversationTrigger {
   token: string;
   payload: CreateGroupConversationRequest;
+}
+
+interface AddServerMemberTrigger {
+  token: string;
+  serverId: string;
+  userId: string;
 }
 
 interface OpenDirectConversationTrigger {
@@ -448,6 +455,7 @@ export class AppComponent {
   private readonly voiceAdminAccessMutation$ = new Subject<VoiceAdminAccessMutation>();
   private readonly openDirectConversationTrigger$ = new Subject<OpenDirectConversationTrigger>();
   private readonly createConversationSubmit$ = new Subject<CreateConversationTrigger>();
+  private readonly addServerMemberTrigger$ = new Subject<AddServerMemberTrigger>();
   private readonly createGroupSubmit$ = new Subject<CreateGroupTrigger>();
   private readonly createChannelSubmit$ = new Subject<CreateChannelTrigger>();
   private readonly deleteChannelTrigger$ = new Subject<DeleteChannelTrigger>();
@@ -549,8 +557,10 @@ export class AppComponent {
   readonly profileEditorOpen = signal(false);
   readonly createConversationModalOpen = signal(false);
   readonly createGroupModalOpen = signal(false);
+  readonly addGroupMemberModalOpen = signal(false);
   readonly createChannelModalOpen = signal(false);
   readonly serverIconModalOpen = signal(false);
+  readonly sideMenuOpen = signal(false);
   readonly selectedMemberUserId = signal<string | null>(null);
   readonly selectedVoiceMemberChannelId = signal<string | null>(null);
   readonly openedImageAttachmentId = signal<string | null>(null);
@@ -576,6 +586,10 @@ export class AppComponent {
   readonly ownerVoiceRequests = signal<VoiceJoinRequestSummary[]>([]);
   readonly activeOwnerRequestId = signal<string | null>(null);
   readonly ownerVoiceRequestModalOpen = signal(false);
+  readonly addGroupMemberLoading = signal(false);
+  readonly directDirectoryQuery = signal('');
+  readonly addGroupMemberQuery = signal('');
+  readonly addGroupMemberUserId = signal<string>('');
   readonly voiceAdminChannels = signal<VoiceAdminChannel[]>([]);
   readonly voiceAdminUsers = signal<VoiceAdminUser[]>([]);
   readonly voiceAdminSelectedChannelName = signal<string | null>(null);
@@ -654,6 +668,12 @@ export class AppComponent {
   );
   readonly isChatsMode = computed(() => this.workspaceMode() === 'chats');
   readonly isGroupsMode = computed(() => this.workspaceMode() === 'groups');
+  readonly directConversations = computed(() =>
+    this.conversations().filter((conversation) => conversation.kind === 'direct')
+  );
+  readonly groupConversations = computed(() =>
+    this.conversations().filter((conversation) => conversation.kind === 'group_chat')
+  );
   readonly conversationSpaces = computed<WorkspaceServer[]>(() =>
     this.conversations().map((conversation) => ({
       id: conversation.id,
@@ -665,8 +685,30 @@ export class AppComponent {
       kind: conversation.kind,
     }))
   );
+  readonly directConversationSpaces = computed<WorkspaceServer[]>(() =>
+    this.directConversations().map((conversation) => ({
+      id: conversation.id,
+      name: conversation.title,
+      slug: conversation.id,
+      description: conversation.subtitle,
+      icon_asset: conversation.icon_asset,
+      member_role: conversation.member_role,
+      kind: conversation.kind,
+    }))
+  );
+  readonly groupConversationSpaces = computed<WorkspaceServer[]>(() =>
+    this.groupConversations().map((conversation) => ({
+      id: conversation.id,
+      name: conversation.title,
+      slug: conversation.id,
+      description: conversation.subtitle,
+      icon_asset: conversation.icon_asset,
+      member_role: conversation.member_role,
+      kind: conversation.kind,
+    }))
+  );
   readonly currentSpaceList = computed<WorkspaceServer[]>(() =>
-    this.isChatsMode() ? this.conversationSpaces() : this.servers()
+    this.isChatsMode() ? this.directConversationSpaces() : this.groupConversationSpaces()
   );
 
   readonly activeServer = computed(() => {
@@ -674,10 +716,6 @@ export class AppComponent {
     return this.currentSpaceList().find((server) => server.id === serverId) ?? null;
   });
   readonly activeConversation = computed(() => {
-    if (!this.isChatsMode()) {
-      return null;
-    }
-
     const serverId = this.selectedServerId();
     return this.conversations().find((conversation) => conversation.id === serverId) ?? null;
   });
@@ -685,6 +723,8 @@ export class AppComponent {
     new Set(this.activeConversation()?.members.map((member) => member.user_id) ?? [])
   );
   readonly activeConversationPrimaryChannelId = computed(() => this.activeConversation()?.primary_channel_id ?? null);
+  readonly activeDirectConversation = computed(() => this.activeConversation()?.kind === 'direct' ? this.activeConversation() : null);
+  readonly activeGroupConversation = computed(() => this.activeConversation()?.kind === 'group_chat' ? this.activeConversation() : null);
 
   readonly activeChannel = computed(() => {
     const channelId = this.selectedChannelId();
@@ -760,7 +800,7 @@ export class AppComponent {
   readonly canManageActiveGroup = computed(() => {
     const activeServer = this.activeServer();
     const currentUser = this.currentUser();
-    if (!activeServer || !currentUser || activeServer.kind !== 'workspace') {
+    if (!activeServer || !currentUser || (activeServer.kind !== 'workspace' && activeServer.kind !== 'group_chat')) {
       return false;
     }
 
@@ -790,6 +830,80 @@ export class AppComponent {
         .localeCompare(this.displayNick(right.nick), 'ru');
     })
   );
+  readonly personalChatEntries = computed(() => this.directConversationSpaces());
+  readonly groupChatEntries = computed(() => this.groupConversationSpaces());
+  readonly activeDirectPeer = computed(() => {
+    const conversation = this.activeDirectConversation();
+    if (!conversation) {
+      return null;
+    }
+
+    return conversation.members.find((member) => member.user_id !== this.currentUser()?.id) ?? conversation.members[0] ?? null;
+  });
+  readonly activeGroupTextChannel = computed(() =>
+    this.channels().find((channel) => channel.type === 'text') ?? null
+  );
+  readonly activeGroupVoiceChannel = computed(() =>
+    this.channels().find((channel) => channel.type === 'voice') ?? null
+  );
+  readonly activeGroupVoiceParticipants = computed(() => {
+    const voiceChannel = this.activeGroupVoiceChannel();
+    if (!voiceChannel) {
+      return [];
+    }
+
+    return this.voiceParticipantsForChannel(voiceChannel.id);
+  });
+  readonly activeGroupMemberCount = computed(() => this.members().length);
+  readonly directDirectoryQueryNormalized = computed(() => this.directDirectoryQuery().trim().toLowerCase());
+  readonly addGroupMemberQueryNormalized = computed(() => this.addGroupMemberQuery().trim().toLowerCase());
+  readonly personalDirectoryCandidates = computed(() => {
+    const query = this.directDirectoryQueryNormalized();
+    return this.conversationDirectory()
+      .filter((user) => {
+        if (!query) {
+          return true;
+        }
+
+        return (
+          this.displayNick(user.nick).toLowerCase().includes(query)
+          || user.login.toLowerCase().includes(query)
+          || user.user_id.toLowerCase().includes(query)
+        );
+      })
+      .sort((left, right) => {
+        if (left.is_online !== right.is_online) {
+          return left.is_online ? -1 : 1;
+        }
+
+        return this.displayNick(left.nick).localeCompare(this.displayNick(right.nick), 'ru');
+      });
+  });
+  readonly activeGroupKnownCandidates = computed(() => {
+    const existingMemberIds = new Set(this.members().map((member) => member.user_id));
+    const query = this.addGroupMemberQueryNormalized();
+    return this.conversationDirectory()
+      .filter((user) => !existingMemberIds.has(user.user_id))
+      .filter((user) => {
+        if (!query) {
+          return true;
+        }
+
+        return (
+          this.displayNick(user.nick).toLowerCase().includes(query)
+          || user.login.toLowerCase().includes(query)
+          || user.user_id.toLowerCase().includes(query)
+        );
+      })
+      .sort((left, right) => {
+        if (left.is_online !== right.is_online) {
+          return left.is_online ? -1 : 1;
+        }
+
+        return this.displayNick(left.nick).localeCompare(this.displayNick(right.nick), 'ru');
+      });
+  });
+  readonly activeSpaceListTitle = computed(() => this.isChatsMode() ? 'Личные' : 'Групповые');
   readonly currentUserAvatarUrl = computed(() =>
     this.buildUserAvatarUrl(this.currentUser()?.id ?? null, this.currentUser()?.avatar_updated_at ?? null)
   );
@@ -1428,7 +1542,7 @@ export class AppComponent {
           this.workspaceApi.createGroupConversation(token, payload).pipe(
             tap((conversation) => {
               this.conversations.set(this.mergeConversationsById([...this.conversations(), conversation]));
-              this.workspaceMode.set('chats');
+              this.workspaceMode.set('groups');
               this.createConversationModalOpen.set(false);
               this.conversationCreateTab.set('direct');
               this.createConversationForm.name = '';
@@ -1444,6 +1558,38 @@ export class AppComponent {
             }),
             finalize(() => {
               this.createConversationLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.addServerMemberTrigger$
+      .pipe(
+        exhaustMap(({ token, serverId, userId }) =>
+          this.workspaceApi.addServerMember(token, serverId, userId).pipe(
+            tap((member) => {
+              this.members.update((currentMembers) => {
+                if (currentMembers.some((entry) => entry.user_id === member.user_id)) {
+                  return currentMembers;
+                }
+
+                return [...currentMembers, member];
+              });
+              this.addGroupMemberModalOpen.set(false);
+              this.addGroupMemberUserId.set('');
+              this.addGroupMemberQuery.set('');
+              this.managementSuccess.set(`Участник ${this.displayNick(member.nick)} добавлен в группу`);
+              void this.refreshConversationsList(token);
+              void this.refreshMembers();
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, 'Не удалось добавить участника в группу'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.addGroupMemberLoading.set(false);
             })
           )
         ),
@@ -2069,21 +2215,67 @@ export class AppComponent {
     this.settingsPanelOpen.set(false);
   }
 
+  toggleSideMenu(): void {
+    this.sideMenuOpen.set(!this.sideMenuOpen());
+  }
+
+  closeSideMenu(): void {
+    this.sideMenuOpen.set(false);
+  }
+
+  openCreateGroupShortcut(): void {
+    this.closeSideMenu();
+    this.openCreateConversationModal('group');
+  }
+
+  openAddUserShortcut(): void {
+    this.closeSideMenu();
+    this.directDirectoryQuery.set('');
+    this.openCreateConversationModal('direct');
+  }
+
+  openAddGroupMemberModal(): void {
+    const token = this.session()?.access_token;
+    if (!token || !this.activeGroupConversation() || !this.canManageActiveGroup()) {
+      return;
+    }
+
+    this.addGroupMemberUserId.set('');
+    this.addGroupMemberQuery.set('');
+    this.managementError.set(null);
+    this.managementSuccess.set(null);
+    this.addGroupMemberModalOpen.set(true);
+    void this.loadConversationDirectory(token);
+  }
+
+  closeAddGroupMemberModal(): void {
+    this.addGroupMemberModalOpen.set(false);
+    this.addGroupMemberUserId.set('');
+    this.addGroupMemberQuery.set('');
+  }
+
+  submitAddGroupMember(): void {
+    const token = this.session()?.access_token;
+    const serverId = this.selectedServerId();
+    const userId = this.addGroupMemberUserId().trim();
+    if (!token || !serverId || !userId) {
+      this.managementError.set('Выберите пользователя для добавления в группу');
+      return;
+    }
+
+    this.addGroupMemberLoading.set(true);
+    this.managementError.set(null);
+    this.managementSuccess.set(null);
+    this.addServerMemberTrigger$.next({ token, serverId, userId });
+  }
+
   selectWorkspaceMode(mode: WorkspaceMode): void {
     if (this.workspaceMode() === mode) {
       return;
     }
 
     this.workspaceMode.set(mode);
-    const spaces = mode === 'groups' ? this.servers() : this.conversations().map((conversation) => ({
-      id: conversation.id,
-      name: conversation.title,
-      slug: conversation.id,
-      description: conversation.subtitle,
-      icon_asset: conversation.icon_asset,
-      member_role: conversation.member_role,
-      kind: conversation.kind,
-    }));
+    const spaces = mode === 'groups' ? this.groupConversationSpaces() : this.directConversationSpaces();
 
     if (!spaces.some((space) => space.id === this.selectedServerId())) {
       const token = this.session()?.access_token;
@@ -2123,7 +2315,7 @@ export class AppComponent {
     }
 
     this.closeMobilePanel();
-    this.workspaceMode.set('chats');
+    this.workspaceMode.set(tab === 'group' ? 'groups' : 'chats');
     this.conversationCreateTab.set(tab);
     this.createConversationForm.directUserId = '';
     this.createConversationForm.name = '';
@@ -2231,6 +2423,41 @@ export class AppComponent {
     this.directCall.clearFeedback();
     this.selectedMemberUserId.set(member.userId);
     this.selectedVoiceMemberChannelId.set(null);
+  }
+
+  openActiveDirectPeerCall(): void {
+    const peer = this.activeDirectPeer();
+    if (!peer) {
+      return;
+    }
+
+    this.openMemberCall({
+      id: peer.user_id,
+      userId: peer.user_id,
+      login: peer.login,
+      nick: peer.nick,
+      avatarUpdatedAt: peer.avatar_updated_at,
+      role: peer.role,
+      roleLabel: this.formatMemberRole(peer.role),
+      isSelf: peer.user_id === this.currentUser()?.id,
+      presenceLabel: this.formatOnlineStatus(peer.is_online),
+      isOnline: peer.is_online,
+      voiceParticipant: null
+    });
+  }
+
+  async toggleActiveGroupVoice(): Promise<void> {
+    const voiceChannel = this.activeGroupVoiceChannel();
+    if (!voiceChannel) {
+      return;
+    }
+
+    if (this.connectedVoiceChannelId() === voiceChannel.id) {
+      this.leaveVoiceChannel();
+      return;
+    }
+
+    await this.handleVoiceChannelSelection(voiceChannel);
   }
 
   openDirectChatWithSelectedMember(): void {
@@ -2997,7 +3224,7 @@ export class AppComponent {
 
     if (serverId === this.selectedServerId()) {
       if (this.isCompactVoiceWorkspaceViewport()) {
-        this.mobilePanel.set('channels');
+        this.closeMobilePanel();
       }
       return;
     }
@@ -3040,7 +3267,7 @@ export class AppComponent {
 
     this.schedulePresenceHeartbeat(true);
     if (this.isCompactVoiceWorkspaceViewport()) {
-      this.mobilePanel.set('channels');
+      this.closeMobilePanel();
     } else {
       this.closeMobilePanel();
     }
@@ -3986,32 +4213,12 @@ export class AppComponent {
   }
 
   private async refreshServersList(token: string): Promise<void> {
-    const previousSelectedServerId = this.selectedServerId();
-
     this.workspaceApi
       .getServers(token)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (servers) => {
           this.servers.set(this.mergeServersById(servers));
-
-          if (!servers.length && this.isGroupsMode()) {
-            this.appEvents.setActiveServer(null);
-            this.selectedServerId.set(null);
-            this.selectedChannelId.set(null);
-            this.channels.set([]);
-            this.members.set([]);
-            this.voicePresence.set([]);
-            this.resetTextChannelState();
-            return;
-          }
-
-          if (
-            this.isGroupsMode()
-            && (!previousSelectedServerId || !servers.some((server) => server.id === previousSelectedServerId))
-          ) {
-            this.loadServerWorkspace(token, servers[0].id);
-          }
         },
         error: () => {
           // Silent realtime refresh should not interrupt the current session.
@@ -4027,9 +4234,14 @@ export class AppComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (conversations) => {
-          this.conversations.set(this.mergeConversationsById(conversations));
+          const mergedConversations = this.mergeConversationsById(conversations);
+          this.conversations.set(mergedConversations);
 
-          if (!conversations.length && this.isChatsMode()) {
+          const spaces = this.isGroupsMode()
+            ? this.groupConversationSpaces()
+            : this.directConversationSpaces();
+
+          if (!spaces.length) {
             this.appEvents.setActiveServer(null);
             this.selectedServerId.set(null);
             this.selectedChannelId.set(null);
@@ -4040,11 +4252,8 @@ export class AppComponent {
             return;
           }
 
-          if (
-            this.isChatsMode()
-            && (!previousSelectedServerId || !conversations.some((conversation) => conversation.id === previousSelectedServerId))
-          ) {
-            this.loadServerWorkspace(token, conversations[0].id);
+          if (!previousSelectedServerId || !spaces.some((conversation) => conversation.id === previousSelectedServerId)) {
+            this.loadServerWorkspace(token, spaces[0].id);
           }
         },
         error: () => {
@@ -4232,11 +4441,15 @@ export class AppComponent {
         next: ({ me, servers, conversations }) => {
           this.currentUser.set(me);
           this.servers.set(this.mergeServersById(servers));
-          this.conversations.set(this.mergeConversationsById(conversations));
+          const mergedConversations = this.mergeConversationsById(conversations);
+          this.conversations.set(mergedConversations);
           this.schedulePresenceHeartbeat(true);
           void this.loadConversationDirectory(token);
 
-          if (!servers.length && !conversations.length) {
+          const directSpaces = mergedConversations.filter((conversation) => conversation.kind === 'direct');
+          const groupSpaces = mergedConversations.filter((conversation) => conversation.kind === 'group_chat');
+
+          if (!directSpaces.length && !groupSpaces.length) {
             this.appEvents.setActiveServer(null);
             this.stopMemberPolling();
             this.stopVoicePresencePolling();
@@ -4254,12 +4467,16 @@ export class AppComponent {
           const selectedServerId = this.selectedServerId();
           const previousMode = this.workspaceMode();
           const preferredMode = previousMode === 'groups'
-            ? (servers.length ? 'groups' : 'chats')
-            : (conversations.length ? 'chats' : 'groups');
+            ? (groupSpaces.length ? 'groups' : 'chats')
+            : (directSpaces.length ? 'chats' : 'groups');
           this.workspaceMode.set(preferredMode);
 
-          const preferredSpaceList = preferredMode === 'groups' ? servers : this.mapConversationSpaces(conversations);
-          const fallbackSpaceList = preferredMode === 'groups' ? this.mapConversationSpaces(conversations) : servers;
+          const preferredSpaceList = preferredMode === 'groups'
+            ? this.mapConversationSpaces(groupSpaces)
+            : this.mapConversationSpaces(directSpaces);
+          const fallbackSpaceList = preferredMode === 'groups'
+            ? this.mapConversationSpaces(directSpaces)
+            : this.mapConversationSpaces(groupSpaces);
           const preferredServerId =
             selectedServerId && preferredSpaceList.some((server) => server.id === selectedServerId)
               ? selectedServerId
@@ -5383,6 +5600,56 @@ export class AppComponent {
 
   userAvatarUrl(userId: string | null | undefined, avatarUpdatedAt: string | null | undefined): string | null {
     return this.buildUserAvatarUrl(userId ?? null, avatarUpdatedAt ?? null);
+  }
+
+  conversationPeer(conversation: ConversationSummary): ConversationDirectoryUser | ConversationMemberPreview | null {
+    return conversation.members.find((member) => member.user_id !== this.currentUser()?.id) ?? conversation.members[0] ?? null;
+  }
+
+  conversationIconUrl(conversation: ConversationSummary): string | null {
+    if (conversation.kind === 'direct') {
+      const peer = this.conversationPeer(conversation);
+      return this.userAvatarUrl(peer?.user_id ?? null, peer?.avatar_updated_at ?? null);
+    }
+
+    const iconAsset = conversation.icon_asset ?? DEFAULT_SERVER_ICON_ASSET_BY_NAME[conversation.title] ?? null;
+    return iconAsset ? this.buildServerIconAssetUrl(iconAsset) : null;
+  }
+
+  conversationMetaLabel(conversation: ConversationSummary): string {
+    if (conversation.kind === 'direct') {
+      const peer = this.conversationPeer(conversation);
+      return peer ? `ID: ${peer.user_id}` : 'Личный чат';
+    }
+
+    return conversation.subtitle ?? 'Групповой чат';
+  }
+
+  activeSpaceMetaLabel(): string {
+    if (this.isChatsMode()) {
+      const peer = this.activeDirectPeer();
+      return peer ? `ID: ${peer.user_id}` : 'Личный чат';
+    }
+
+    const group = this.activeGroupConversation();
+    if (!group) {
+      return 'Групповой чат';
+    }
+
+    return `${this.activeGroupMemberCount()} участников`;
+  }
+
+  directConversationById(conversationId: string): ConversationSummary | null {
+    return this.directConversations().find((conversation) => conversation.id === conversationId) ?? null;
+  }
+
+  groupConversationById(conversationId: string): ConversationSummary | null {
+    return this.groupConversations().find((conversation) => conversation.id === conversationId) ?? null;
+  }
+
+  activeConversationIconUrl(): string | null {
+    const conversation = this.activeConversation();
+    return conversation ? this.conversationIconUrl(conversation) : null;
   }
 
   private getOnlineWeight(isOnline: boolean): number {
