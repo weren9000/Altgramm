@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, LargeBinary, String, Text, Uuid, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, LargeBinary, String, Uuid, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, deferred, mapped_column, relationship
 
 
@@ -83,9 +83,7 @@ class User(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     username: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
-    display_name: Mapped[str] = mapped_column(String(64), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     avatar_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     avatar_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)

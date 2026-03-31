@@ -29,8 +29,6 @@ async def connect_to_direct_calls(websocket: WebSocket) -> None:
             websocket,
             user_id=str(current_user.id),
             nick=current_user.username,
-            full_name=current_user.display_name,
-            character_name=current_user.bio,
             avatar_updated_at=current_user.avatar_updated_at,
         )
 

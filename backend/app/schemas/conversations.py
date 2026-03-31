@@ -10,8 +10,6 @@ class ConversationMemberPreview(BaseModel):
     user_id: UUID
     login: str
     nick: str
-    full_name: str
-    character_name: str | None
     avatar_updated_at: datetime | None
     is_online: bool
     role: str
@@ -32,8 +30,6 @@ class ConversationDirectoryUserSummary(BaseModel):
     user_id: UUID
     login: str
     nick: str
-    full_name: str
-    character_name: str | None
     avatar_updated_at: datetime | None
     is_online: bool
 

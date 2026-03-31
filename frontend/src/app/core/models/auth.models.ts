@@ -1,22 +1,19 @@
 export interface AuthLoginRequest {
-  login: string;
+  email: string;
   password: string;
 }
 
 export interface AuthRegisterRequest {
-  login: string;
+  email: string;
   password: string;
-  full_name: string;
+  password_confirmation: string;
   nick: string;
-  character_name: string;
 }
 
 export interface AuthUser {
   id: string;
-  login: string;
-  full_name: string;
+  email: string;
   nick: string;
-  character_name: string | null;
   avatar_updated_at: string | null;
   is_admin: boolean;
   created_at: string;

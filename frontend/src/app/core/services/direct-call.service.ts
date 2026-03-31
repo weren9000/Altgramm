@@ -5,8 +5,6 @@ import { VOICE_ICE_SERVERS, WS_BASE_URL } from '../api/api-base';
 export interface DirectCallPeer {
   user_id: string;
   nick: string;
-  full_name: string;
-  character_name: string | null;
   avatar_updated_at: string | null;
 }
 

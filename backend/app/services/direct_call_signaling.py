@@ -13,16 +13,12 @@ from fastapi import WebSocket
 class DirectCallPeer:
     user_id: str
     nick: str
-    full_name: str
-    character_name: str | None
     avatar_updated_at: datetime | None = None
 
     def to_payload(self) -> dict[str, Any]:
         return {
             "user_id": self.user_id,
             "nick": self.nick,
-            "full_name": self.full_name,
-            "character_name": self.character_name,
             "avatar_updated_at": self.avatar_updated_at.isoformat() if self.avatar_updated_at is not None else None,
         }
 
@@ -65,8 +61,6 @@ class DirectCallSignalingManager:
         *,
         user_id: str,
         nick: str,
-        full_name: str,
-        character_name: str | None,
         avatar_updated_at: datetime | None = None,
     ) -> str:
         await websocket.accept()
@@ -80,8 +74,6 @@ class DirectCallSignalingManager:
                 peer=DirectCallPeer(
                     user_id=user_id,
                     nick=nick,
-                    full_name=full_name,
-                    character_name=character_name,
                     avatar_updated_at=avatar_updated_at,
                 ),
             )

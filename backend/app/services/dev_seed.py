@@ -39,9 +39,7 @@ def ensure_development_seed_data() -> None:
             user = User(
                 email=settings.demo_login.lower(),
                 username=settings.demo_nick,
-                display_name=settings.demo_full_name,
                 password_hash=hash_password(settings.demo_password),
-                bio=settings.demo_character_name,
                 is_admin=settings.demo_is_admin,
             )
             db.add(user)
@@ -49,8 +47,6 @@ def ensure_development_seed_data() -> None:
         else:
             user.email = settings.demo_login.lower()
             user.username = settings.demo_nick
-            user.display_name = settings.demo_full_name
-            user.bio = settings.demo_character_name
             user.is_admin = settings.demo_is_admin
             if not verify_password(settings.demo_password, user.password_hash):
                 user.password_hash = hash_password(settings.demo_password)

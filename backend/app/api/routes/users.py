@@ -42,26 +42,16 @@ def read_current_user(current_user: User = Depends(get_current_user)) -> Current
 
 @router.put("/me/profile", response_model=UpdateCurrentUserProfileResponse)
 async def update_current_user_profile(
-    character_name: str = Form(..., min_length=2, max_length=64),
     avatar: UploadFile | None = File(default=None),
     remove_avatar: bool = Form(default=False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> UpdateCurrentUserProfileResponse:
-    normalized_character_name = character_name.strip()
-    if len(normalized_character_name) < 2:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Имя персонажа должно быть не короче 2 символов",
-        )
-
     if avatar is not None and remove_avatar:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Нельзя одновременно загрузить и удалить аватарку",
         )
-
-    current_user.bio = normalized_character_name
 
     if remove_avatar:
         current_user.avatar_filename = None

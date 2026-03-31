@@ -48,8 +48,6 @@ def _member_preview(member: ServerMember, online_user_ids: set[UUID]) -> Convers
         user_id=user.id,
         login=user.email,
         nick=user.username,
-        full_name=user.display_name,
-        character_name=user.bio,
         avatar_updated_at=user.avatar_updated_at,
         is_online=user.id in online_user_ids,
         role=member.role.value,
@@ -63,9 +61,7 @@ def _conversation_title(server: Server, current_user_id: UUID) -> tuple[str, str
             return server.name, None
 
         peer_user = peer_member.user
-        title = peer_user.bio or peer_user.username
-        subtitle = f"@{peer_user.username}" if title != peer_user.username else (peer_user.display_name or None)
-        return title, subtitle
+        return peer_user.username, peer_user.email
 
     subtitle = f"{len(server.members)} участников"
     return server.name, subtitle
@@ -145,8 +141,6 @@ def list_conversation_directory(
             user_id=user.id,
             login=user.email,
             nick=user.username,
-            full_name=user.display_name,
-            character_name=user.bio,
             avatar_updated_at=user.avatar_updated_at,
             is_online=user.id in online_user_ids,
         )

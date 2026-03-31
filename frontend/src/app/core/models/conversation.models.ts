@@ -2,8 +2,6 @@ export interface ConversationMemberPreview {
   user_id: string;
   login: string;
   nick: string;
-  full_name: string;
-  character_name: string | null;
   avatar_updated_at: string | null;
   is_online: boolean;
   role: string;
@@ -24,8 +22,6 @@ export interface ConversationDirectoryUser {
   user_id: string;
   login: string;
   nick: string;
-  full_name: string;
-  character_name: string | null;
   avatar_updated_at: string | null;
   is_online: boolean;
 }

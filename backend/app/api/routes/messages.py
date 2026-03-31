@@ -69,8 +69,6 @@ def _build_author_summary(user: User) -> MessageAuthorSummary:
         id=user.id,
         login=user.email,
         nick=user.username,
-        full_name=user.display_name,
-        character_name=user.bio,
         avatar_updated_at=user.avatar_updated_at,
     )
 
@@ -79,7 +77,6 @@ def _build_read_user_summary(user: User) -> MessageReadUserSummary:
     return MessageReadUserSummary(
         id=user.id,
         nick=user.username,
-        character_name=user.bio,
         avatar_updated_at=user.avatar_updated_at,
     )
 
@@ -191,7 +188,6 @@ def _build_channel_read_state_summary(read_state: ChannelReadState) -> ChannelRe
 def _build_channel_read_event_payload(read_state: ChannelReadState, user: User) -> dict[str, str | None]:
     payload = _build_channel_read_state_summary(read_state).model_dump(mode="json")
     payload["nick"] = user.username
-    payload["character_name"] = user.bio
     payload["avatar_updated_at"] = user.avatar_updated_at
     return payload
 

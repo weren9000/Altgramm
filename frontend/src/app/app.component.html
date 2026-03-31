@@ -1,4 +1,4 @@
-@if (!isAuthenticated()) {
+﻿@if (!isAuthenticated()) {
   <div class="auth-shell">
     <section class="auth-panel auth-panel--story auth-panel--logo">
       <div class="auth-brand">
@@ -31,13 +31,13 @@
       @if (authMode() === 'login') {
         <form class="auth-form" (ngSubmit)="submitLogin()">
           <label class="field">
-            <span>Логин</span>
+            <span>Email</span>
             <input
-              [(ngModel)]="loginForm.login"
-              autocomplete="username"
-              name="login"
-              placeholder="Введите логин"
-              type="text"
+              [(ngModel)]="loginForm.email"
+              autocomplete="email"
+              name="email"
+              placeholder="you@example.com"
+              type="email"
             />
           </label>
 
@@ -61,13 +61,13 @@
       } @else {
         <form class="auth-form" (ngSubmit)="submitRegistration()">
           <label class="field">
-            <span>Логин</span>
+            <span>Email</span>
             <input
-              [(ngModel)]="registerForm.login"
-              autocomplete="username"
-              name="register_login"
-              placeholder="Придумайте логин"
-              type="text"
+              [(ngModel)]="registerForm.email"
+              autocomplete="email"
+              name="register_email"
+              placeholder="you@example.com"
+              type="email"
             />
           </label>
 
@@ -83,34 +83,25 @@
           </label>
 
           <label class="field">
-            <span>ФИО игрока</span>
+            <span>Подтверждение пароля</span>
             <input
-              [(ngModel)]="registerForm.full_name"
-              autocomplete="name"
-              name="full_name"
-              placeholder="Например, Иван Петров"
-              type="text"
+              [(ngModel)]="registerForm.password_confirmation"
+              autocomplete="new-password"
+              name="password_confirmation"
+              placeholder="Повторите пароль"
+              type="password"
             />
           </label>
 
           <label class="field">
-            <span>НИК</span>
-            <input [(ngModel)]="registerForm.nick" name="nick" placeholder="Игровой ник" type="text" />
-          </label>
-
-          <label class="field">
-            <span>Персонаж</span>
-            <input
-              [(ngModel)]="registerForm.character_name"
-              name="character_name"
-              placeholder="Имя персонажа"
-              type="text"
-            />
+            <span>Ник</span>
+            <input [(ngModel)]="registerForm.nick" name="nick" placeholder="Ваш ник" type="text" />
           </label>
 
           <button class="primary-button primary-button--full" type="submit" [disabled]="authLoading()">
             {{ authLoading() ? 'Создаем аккаунт...' : 'Зарегистрироваться' }}
           </button>
+
         </form>
       }
 
@@ -276,8 +267,8 @@
                     userId: member.user_id,
                     login: member.login,
                     nick: member.nick,
-                    fullName: member.full_name,
-                    characterName: member.character_name,
+                    
+                    
                     avatarUpdatedAt: member.avatar_updated_at,
                     role: member.role,
                     roleLabel: formatMemberRole(member.role),
@@ -289,13 +280,13 @@
                 >
                   <div class="conversation-member__avatar">
                     @if (userAvatarUrl(member.user_id, member.avatar_updated_at); as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="displayCharacterName(member.character_name, member.nick)" loading="lazy" />
+                      <img [src]="avatarUrl" [alt]="displayNick(member.nick)" loading="lazy" />
                     } @else {
-                      <span>{{ displayCharacterInitials(member.character_name, member.nick) }}</span>
+                      <span>{{ displayNickInitials(member.nick) }}</span>
                     }
                   </div>
                   <div class="conversation-member__copy">
-                    <strong>{{ displayCharacterName(member.character_name, member.nick) }}</strong>
+                    <strong>{{ displayNick(member.nick) }}</strong>
                     <small>{{ member.is_online ? 'онлайн' : 'офлайн' }}</small>
                   </div>
                 </button>
@@ -400,13 +391,13 @@
                   >
                     <div class="voice-roster__avatar">
                       @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
-                        <img [src]="avatarUrl" [alt]="displayCharacterName(participant.character_name, participant.nick)" loading="lazy" />
+                        <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
                       } @else {
-                        <span>{{ displayCharacterInitials(participant.character_name, participant.nick) }}</span>
+                        <span>{{ displayNickInitials(participant.nick) }}</span>
                       }
                     </div>
                     <div class="voice-roster__meta">
-                      <span class="voice-roster__name">{{ displayCharacterName(participant.character_name, participant.nick) }}</span>
+                      <span class="voice-roster__name">{{ displayNick(participant.nick) }}</span>
                     </div>
                     <img
                       class="voice-state-icon voice-state-icon--roster"
@@ -472,13 +463,13 @@
                   >
                     <div class="voice-roster__avatar">
                       @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
-                        <img [src]="avatarUrl" [alt]="displayCharacterName(participant.character_name, participant.nick)" loading="lazy" />
+                        <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
                       } @else {
-                        <span>{{ displayCharacterInitials(participant.character_name, participant.nick) }}</span>
+                        <span>{{ displayNickInitials(participant.nick) }}</span>
                       }
                     </div>
                     <div class="voice-roster__meta">
-                      <span class="voice-roster__name">{{ displayCharacterName(participant.character_name, participant.nick) }}</span>
+                      <span class="voice-roster__name">{{ displayNick(participant.nick) }}</span>
                     </div>
                     <img
                       class="voice-state-icon voice-state-icon--roster"
@@ -544,13 +535,13 @@
                     >
                       <div class="voice-roster__avatar">
                         @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
-                          <img [src]="avatarUrl" [alt]="displayCharacterName(participant.character_name, participant.nick)" loading="lazy" />
+                          <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
                         } @else {
-                          <span>{{ displayCharacterInitials(participant.character_name, participant.nick) }}</span>
+                          <span>{{ displayNickInitials(participant.nick) }}</span>
                         }
                       </div>
                       <div class="voice-roster__meta">
-                        <span class="voice-roster__name">{{ displayCharacterName(participant.character_name, participant.nick) }}</span>
+                        <span class="voice-roster__name">{{ displayNick(participant.nick) }}</span>
                       </div>
                       <img
                         class="voice-state-icon voice-state-icon--roster"
@@ -723,14 +714,14 @@
                   >
                   <div class="voice-card__avatar">
                     @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="displayCharacterName(participant.character_name, participant.nick)" loading="lazy" />
+                      <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
                     } @else {
-                      <span>{{ displayCharacterInitials(participant.character_name, participant.nick) }}</span>
+                      <span>{{ displayNickInitials(participant.nick) }}</span>
                     }
                   </div>
                   <div class="voice-card__body voice-card__body--compact">
                     <div class="voice-card__title">
-                      <strong>{{ displayCharacterName(participant.character_name, participant.nick) }}</strong>
+                      <strong>{{ displayNick(participant.nick) }}</strong>
                       @if (participant.is_self) {
                         <small class="voice-card__self">вы</small>
                       }
@@ -770,16 +761,16 @@
                         [style.--avatar-accent]="message.author.id === currentUser()?.id ? '#ff9f43' : '#3dd6c6'"
                       >
                         @if (userAvatarUrl(message.author.id, message.author.avatar_updated_at); as avatarUrl) {
-                          <img [src]="avatarUrl" [alt]="displayCharacterName(message.author.character_name, message.author.nick)" loading="lazy" />
+                          <img [src]="avatarUrl" [alt]="displayNick(message.author.nick)" loading="lazy" />
                         } @else {
-                          <span>{{ displayCharacterInitials(message.author.character_name, message.author.nick) }}</span>
+                          <span>{{ displayNickInitials(message.author.nick) }}</span>
                         }
                       </div>
                       <div class="message-card__body">
                         <div class="message-card__meta">
                           <div class="message-card__author">
-                            <strong>{{ displayCharacterName(message.author.character_name, message.author.nick) }}</strong>
-                            @if (message.author.nick !== displayCharacterName(message.author.character_name, message.author.nick)) {
+                            <strong>{{ displayNick(message.author.nick) }}</strong>
+                            @if (message.author.nick !== displayNick(message.author.nick)) {
                               <span>&#64;{{ message.author.nick }}</span>
                             }
                           </div>
@@ -788,7 +779,7 @@
                         @if (message.reply_to; as replyTo) {
                           <button class="message-card__reply-preview" type="button" (click)="startReplyToMessage(message)">
                             <span class="message-card__reply-label">
-                              Ответ на {{ displayCharacterName(replyTo.author.character_name, replyTo.author.nick) }}
+                              Ответ на {{ displayNick(replyTo.author.nick) }}
                             </span>
                             <strong>{{ replyPreviewText(replyTo) }}</strong>
                           </button>
@@ -936,7 +927,7 @@
               <div class="composer__reply">
                 <div class="composer__reply-copy">
                   <span class="composer__reply-label">
-                    Ответ на {{ displayCharacterName(replyMessage.author.character_name, replyMessage.author.nick) }}
+                    Ответ на {{ displayNick(replyMessage.author.nick) }}
                   </span>
                   <strong>{{ replyPreviewText(replyMessage) }}</strong>
                 </div>
@@ -1051,9 +1042,9 @@
             (click)="openProfileAvatarPicker('instant')"
           >
             @if (currentUserAvatarUrl(); as avatarUrl) {
-              <img [src]="avatarUrl" [alt]="displayCharacterName(currentUser()?.character_name, currentUser()?.nick ?? '')" loading="lazy" />
+              <img [src]="avatarUrl" [alt]="displayNick(currentUser()?.nick ?? '')" loading="lazy" />
             } @else {
-              <span>{{ displayCharacterInitials(currentUser()?.character_name, currentUser()?.nick ?? '??') }}</span>
+              <span>{{ displayNickInitials(currentUser()?.nick ?? '??') }}</span>
             }
           </button>
           <button
@@ -1078,8 +1069,8 @@
         </div>
 
         <div class="profile-character">
-          <p class="eyebrow">Персонаж</p>
-          <strong>{{ displayCharacterName(currentUser()?.character_name, currentUser()?.nick ?? 'Ожидание авторизации') }}</strong>
+          <p class="eyebrow">Ник</p>
+          <strong>{{ displayNick(currentUser()?.nick ?? 'Ожидание авторизации') }}</strong>
         </div>
         @if (isAdmin()) {
           <button
@@ -1119,14 +1110,14 @@
                 <span class="member-row__identity">
                   <span class="member-avatar" [class.member-avatar--online]="member.isOnline">
                     @if (userAvatarUrl(member.userId, member.avatarUpdatedAt); as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="displayCharacterName(member.characterName, member.nick)" loading="lazy" />
+                      <img [src]="avatarUrl" [alt]="displayNick(member.nick)" loading="lazy" />
                     } @else {
-                      <span>{{ displayCharacterInitials(member.characterName, member.nick) }}</span>
+                      <span>{{ displayNickInitials(member.nick) }}</span>
                     }
                   </span>
                 </span>
                 <strong class="member-row__name">
-                  {{ displayCharacterName(member.characterName, member.nick) }}
+                  {{ displayNick(member.nick) }}
                   @if (member.isSelf) {
                     <span class="member-row__self">вы</span>
                   }
@@ -1150,7 +1141,7 @@
       <div class="modal__header">
         <div>
           <p class="eyebrow">Личный звонок</p>
-          <h3>{{ displayCharacterName(standaloneCallPeer.character_name, standaloneCallPeer.nick) }}</h3>
+          <h3>{{ displayNick(standaloneCallPeer.nick) }}</h3>
         </div>
         @if (directCallState() === 'incoming') {
           <button class="icon-button" type="button" (click)="rejectDirectCall()">✕</button>
@@ -1163,14 +1154,14 @@
         <div class="direct-call-peer-card">
           <div class="direct-call-peer-card__avatar">
             @if (userAvatarUrl(standaloneCallPeer.user_id, standaloneCallPeer.avatar_updated_at); as avatarUrl) {
-              <img [src]="avatarUrl" [alt]="displayCharacterName(standaloneCallPeer.character_name, standaloneCallPeer.nick)" loading="lazy" />
+              <img [src]="avatarUrl" [alt]="displayNick(standaloneCallPeer.nick)" loading="lazy" />
             } @else {
-              <span>{{ displayCharacterInitials(standaloneCallPeer.character_name, standaloneCallPeer.nick) }}</span>
+              <span>{{ displayNickInitials(standaloneCallPeer.nick) }}</span>
             }
           </div>
 
           <div class="direct-call-peer-card__meta">
-            <strong>{{ displayCharacterName(standaloneCallPeer.character_name, standaloneCallPeer.nick) }}</strong>
+            <strong>{{ displayNick(standaloneCallPeer.nick) }}</strong>
             <small>&#64;{{ standaloneCallPeer.nick }}</small>
             <p class="direct-call-status">
               {{ directCallNotice() || (directCallState() === 'outgoing' ? 'Ожидаем ответа собеседника.' : 'Личный звонок активен.') }}
@@ -1266,7 +1257,7 @@
       <div class="direct-call-screen-overlay__title">
         <strong>{{ directCallHasRemoteScreen() ? 'Экран собеседника' : 'Ваш экран' }}</strong>
         @if (directCallPeer(); as expandedPeer) {
-          <span>{{ displayCharacterName(expandedPeer.character_name, expandedPeer.nick) }}</span>
+          <span>{{ displayNick(expandedPeer.nick) }}</span>
         }
       </div>
       <div class="direct-call-actions direct-call-actions--overlay">
@@ -1313,7 +1304,7 @@
       <div class="modal__header">
         <div>
           <p class="eyebrow">Профиль</p>
-          <h3>{{ displayCharacterName(currentUser()?.character_name, currentUser()?.nick ?? 'Пользователь') }}</h3>
+          <h3>{{ displayNick(currentUser()?.nick ?? 'Пользователь') }}</h3>
         </div>
         <button class="icon-button" type="button" (click)="closeProfileEditor()">×</button>
       </div>
@@ -1327,9 +1318,9 @@
             (click)="openProfileAvatarPicker('editor')"
           >
             @if (effectiveProfileAvatarUrl(); as avatarUrl) {
-              <img [src]="avatarUrl" [alt]="displayCharacterName(profileCharacterNameDraft(), currentUser()?.nick ?? '')" loading="lazy" />
+              <img [src]="avatarUrl" [alt]="displayNick(currentUser()?.nick ?? '')" loading="lazy" />
             } @else {
-              <span>{{ displayCharacterInitials(profileCharacterNameDraft(), currentUser()?.nick ?? '??') }}</span>
+              <span>{{ displayNickInitials(currentUser()?.nick ?? '??') }}</span>
             }
           </button>
           <div class="profile-editor__controls">
@@ -1348,19 +1339,9 @@
           </div>
         </div>
 
-        <label class="form-field">
-          <span>Имя персонажа</span>
-          <input
-            [ngModel]="profileCharacterNameDraft()"
-            (ngModelChange)="profileCharacterNameDraft.set($event)"
-            [disabled]="profileSaving()"
-            maxlength="64"
-          />
-        </label>
-
         <div class="profile-editor__summary">
           <p><span>Ник:</span> {{ currentUser()?.nick ?? 'Не указан' }}</p>
-          <p><span>Имя игрока:</span> {{ currentUser()?.full_name ?? 'Не указано' }}</p>
+          <p><span>Email:</span> {{ currentUser()?.email ?? 'Не указан' }}</p>
         </div>
 
         @if (profileError()) {
@@ -1432,13 +1413,13 @@
       <div class="modal__header">
         <div>
           <p class="eyebrow">Запрос на вход</p>
-          <h3>{{ displayCharacterName(activeRequest.requester_character_name, activeRequest.requester_nick) }}</h3>
+          <h3>{{ displayNick(activeRequest.requester_nick) }}</h3>
         </div>
         <button class="icon-button" type="button" (click)="closeActiveOwnerRequest()">✕</button>
       </div>
 
       <div class="modal__body">
-        <p class="modal-note">{{ displayCharacterName(activeRequest.requester_character_name, activeRequest.requester_nick) }}, хочет зайти в канал {{ activeRequest.channel_name }}</p>
+        <p class="modal-note">{{ displayNick(activeRequest.requester_nick) }}, хочет зайти в канал {{ activeRequest.channel_name }}</p>
       </div>
 
       <div class="modal__actions">
@@ -1640,7 +1621,7 @@
                   >
                     {{
                       channel.owner_nick
-                        ? 'Владелец: ' + displayCharacterName(channel.owner_character_name, channel.owner_nick)
+                        ? 'Владелец: ' + displayNick(channel.owner_nick)
                         : 'Владелец не назначен'
                     }}
                   </small>
@@ -1673,7 +1654,7 @@
                 <select [(ngModel)]="voiceAdminAssignmentForm.userId" name="voice_admin_user">
                   @for (user of voiceAdminUsers(); track user.user_id) {
                     <option [value]="user.user_id">
-                      {{ displayCharacterName(user.character_name, user.nick) }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}
+                      {{ displayNick(user.nick) }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}
                     </option>
                   }
                 </select>
@@ -1704,7 +1685,7 @@
                   @for (view of voiceAdminSelectedChannelAccessView(); track view.entry.user_id) {
                     <div class="voice-admin__row">
                       <div class="voice-admin__meta">
-                        <strong>{{ displayCharacterName(view.entry.character_name, view.entry.nick) }}</strong>
+                        <strong>{{ displayNick(view.entry.nick) }}</strong>
                         <small>&#64;{{ view.entry.nick }}</small>
                       </div>
 
@@ -1835,13 +1816,13 @@
                 >
                   <span class="conversation-picker-row__avatar">
                     @if (userAvatarUrl(user.user_id, user.avatar_updated_at); as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="displayCharacterName(user.character_name, user.nick)" loading="lazy" />
+                      <img [src]="avatarUrl" [alt]="displayNick(user.nick)" loading="lazy" />
                     } @else {
-                      <span>{{ displayCharacterInitials(user.character_name, user.nick) }}</span>
+                      <span>{{ displayNickInitials(user.nick) }}</span>
                     }
                   </span>
                   <span class="conversation-picker-row__copy">
-                    <strong>{{ displayCharacterName(user.character_name, user.nick) }}</strong>
+                    <strong>{{ displayNick(user.nick) }}</strong>
                     <small>&#64;{{ user.nick }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}</small>
                   </span>
                 </button>
@@ -1883,13 +1864,13 @@
                   />
                   <span class="conversation-picker-row__avatar">
                     @if (userAvatarUrl(user.user_id, user.avatar_updated_at); as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="displayCharacterName(user.character_name, user.nick)" loading="lazy" />
+                      <img [src]="avatarUrl" [alt]="displayNick(user.nick)" loading="lazy" />
                     } @else {
-                      <span>{{ displayCharacterInitials(user.character_name, user.nick) }}</span>
+                      <span>{{ displayNickInitials(user.nick) }}</span>
                     }
                   </span>
                   <span class="conversation-picker-row__copy">
-                    <strong>{{ displayCharacterName(user.character_name, user.nick) }}</strong>
+                    <strong>{{ displayNick(user.nick) }}</strong>
                     <small>&#64;{{ user.nick }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}</small>
                   </span>
                 </label>
@@ -2080,7 +2061,7 @@
       <div class="modal__header">
         <div>
           <p class="eyebrow">Участник</p>
-          <h3>{{ displayCharacterName(member.characterName, member.nick) }}</h3>
+          <h3>{{ displayNick(member.nick) }}</h3>
         </div>
         <button class="icon-button" type="button" (click)="closeMemberVolume()">✕</button>
       </div>
@@ -2146,14 +2127,14 @@
             <div class="direct-call-peer-card">
               <div class="direct-call-peer-card__avatar">
                 @if (userAvatarUrl(member.userId, member.avatarUpdatedAt); as avatarUrl) {
-                  <img [src]="avatarUrl" [alt]="displayCharacterName(member.characterName, member.nick)" loading="lazy" />
+                  <img [src]="avatarUrl" [alt]="displayNick(member.nick)" loading="lazy" />
                 } @else {
-                  <span>{{ displayCharacterInitials(member.characterName, member.nick) }}</span>
+                  <span>{{ displayNickInitials(member.nick) }}</span>
                 }
               </div>
 
               <div class="direct-call-peer-card__meta">
-                <strong>{{ displayCharacterName(member.characterName, member.nick) }}</strong>
+                <strong>{{ displayNick(member.nick) }}</strong>
                 <small>&#64;{{ member.nick }}</small>
                 <p class="direct-call-status">
                   {{ directCallNotice() || (directCallState() === 'outgoing' ? 'Ожидаем ответа собеседника.' : 'Личный звонок активен.') }}

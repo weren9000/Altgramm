@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from uuid import uuid4
 
@@ -52,7 +52,7 @@ def test_open_direct_conversation_creates_single_shared_chat() -> None:
         finally:
             if conversation_id is not None:
                 delete_server(conversation_id)
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
 
 def test_conversation_messages_are_private_to_members() -> None:
@@ -78,7 +78,7 @@ def test_conversation_messages_are_private_to_members() -> None:
             message_response = client.post(
                 f"/api/channels/{channel_id}/messages",
                 headers={"Authorization": f"Bearer {admin_token}"},
-                data={"content": "Привет из личного чата"},
+                data={"content": "РџСЂРёРІРµС‚ РёР· Р»РёС‡РЅРѕРіРѕ С‡Р°С‚Р°"},
             )
             assert message_response.status_code == 201
 
@@ -87,7 +87,7 @@ def test_conversation_messages_are_private_to_members() -> None:
                 headers={"Authorization": f"Bearer {user_token}"},
             )
             assert member_messages_response.status_code == 200
-            assert member_messages_response.json()["items"][0]["content"] == "Привет из личного чата"
+            assert member_messages_response.json()["items"][0]["content"] == "РџСЂРёРІРµС‚ РёР· Р»РёС‡РЅРѕРіРѕ С‡Р°С‚Р°"
 
             outsider_messages_response = client.get(
                 f"/api/channels/{channel_id}/messages",
@@ -97,8 +97,8 @@ def test_conversation_messages_are_private_to_members() -> None:
         finally:
             if conversation_id is not None:
                 delete_server(conversation_id)
-            delete_user(payload["login"])
-            delete_user(outsider_payload["login"])
+            delete_user(payload["email"])
+            delete_user(outsider_payload["email"])
 
 
 def test_user_can_create_group_conversation() -> None:
@@ -121,7 +121,7 @@ def test_user_can_create_group_conversation() -> None:
                 "/api/conversations/group",
                 headers={"Authorization": f"Bearer {owner_token}"},
                 json={
-                    "name": f"Мини-группа {uuid4().hex[:6]}",
+                    "name": f"РњРёРЅРё-РіСЂСѓРїРїР° {uuid4().hex[:6]}",
                     "member_ids": [member_one_profile["id"], member_two_profile["id"]],
                 },
             )
@@ -140,6 +140,7 @@ def test_user_can_create_group_conversation() -> None:
         finally:
             if conversation_id is not None:
                 delete_server(conversation_id)
-            delete_user(owner_payload["login"])
-            delete_user(member_one_payload["login"])
-            delete_user(member_two_payload["login"])
+            delete_user(owner_payload["email"])
+            delete_user(member_one_payload["email"])
+            delete_user(member_two_payload["email"])
+

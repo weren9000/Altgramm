@@ -24,22 +24,26 @@ def build_token_response(user: User) -> TokenResponse:
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    login = payload.login.strip().lower()
+    email = payload.email.strip().lower()
     nick = payload.nick.strip()
 
+    if payload.password != payload.password_confirmation:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Пароли не совпадают")
+
     existing_user = db.execute(
-        select(User).where(or_(func.lower(User.email) == login, func.lower(User.username) == nick.lower()))
+        select(User).where(or_(func.lower(User.email) == email, func.lower(User.username) == nick.lower()))
     ).scalar_one_or_none()
 
     if existing_user is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Пользователь с таким логином или ником уже существует")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Пользователь с такой почтой или ником уже существует",
+        )
 
     user = User(
-        email=login,
+        email=email,
         username=nick,
-        display_name=payload.full_name.strip(),
         password_hash=hash_password(payload.password),
-        bio=payload.character_name.strip(),
     )
     db.add(user)
     db.flush()
@@ -51,10 +55,10 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> To
 
 @router.post("/login", response_model=TokenResponse)
 def login_user(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    login = payload.login.strip().lower()
-    user = db.execute(select(User).where(func.lower(User.email) == login)).scalar_one_or_none()
+    email = payload.email.strip().lower()
+    user = db.execute(select(User).where(func.lower(User.email) == email)).scalar_one_or_none()
 
     if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный логин или пароль")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверная почта или пароль")
 
     return build_token_response(user)

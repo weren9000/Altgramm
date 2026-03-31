@@ -7,8 +7,6 @@ export interface VoiceParticipant {
   id: string;
   user_id: string;
   nick: string;
-  full_name: string;
-  character_name: string | null;
   avatar_updated_at: string | null;
   muted: boolean;
   owner_muted: boolean;
@@ -77,8 +75,6 @@ interface RemoteVoiceParticipant {
   id: string;
   user_id: string;
   nick: string;
-  full_name: string;
-  character_name: string | null;
   avatar_updated_at: string | null;
   muted: boolean;
   owner_muted: boolean;
@@ -251,8 +247,6 @@ export class VoiceRoomService {
         id: 'local',
         user_id: currentUser.id,
         nick: currentUser.nick,
-        full_name: currentUser.full_name,
-        character_name: currentUser.character_name,
         avatar_updated_at: currentUser.avatar_updated_at,
         muted: false,
         owner_muted: false,
@@ -309,8 +303,6 @@ export class VoiceRoomService {
           ? {
               ...participant,
               nick: currentUser.nick,
-              full_name: currentUser.full_name,
-              character_name: currentUser.character_name,
               avatar_updated_at: currentUser.avatar_updated_at
             }
           : participant
@@ -318,7 +310,7 @@ export class VoiceRoomService {
     );
   }
 
-  syncParticipantProfiles(participantsSnapshot: Array<Pick<VoiceParticipant, 'user_id' | 'nick' | 'full_name' | 'character_name' | 'avatar_updated_at'>>): void {
+  syncParticipantProfiles(participantsSnapshot: Array<Pick<VoiceParticipant, 'user_id' | 'nick' | 'avatar_updated_at'>>): void {
     if (!participantsSnapshot.length) {
       return;
     }
@@ -334,8 +326,6 @@ export class VoiceRoomService {
         return {
           ...participant,
           nick: snapshot.nick,
-          full_name: snapshot.full_name,
-          character_name: snapshot.character_name,
           avatar_updated_at: snapshot.avatar_updated_at
         };
       })
@@ -1070,8 +1060,6 @@ export class VoiceRoomService {
             ? {
                 ...entry,
                 nick: participant.nick,
-                full_name: participant.full_name,
-                character_name: participant.character_name,
                 avatar_updated_at: participant.avatar_updated_at,
                 muted: participant.muted,
                 owner_muted: participant.owner_muted

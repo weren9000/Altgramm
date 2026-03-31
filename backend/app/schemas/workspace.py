@@ -41,8 +41,6 @@ class ServerMemberSummary(BaseModel):
     user_id: UUID
     login: str
     nick: str
-    full_name: str
-    character_name: str | None
     avatar_updated_at: datetime | None
     role: str
     is_online: bool = False
@@ -52,8 +50,6 @@ class VoicePresenceParticipantSummary(BaseModel):
     participant_id: str
     user_id: UUID
     nick: str
-    full_name: str
-    character_name: str | None
     avatar_updated_at: datetime | None
     muted: bool
     owner_muted: bool
@@ -75,15 +71,12 @@ class MessageAuthorSummary(BaseModel):
     id: UUID
     login: str
     nick: str
-    full_name: str
-    character_name: str | None
     avatar_updated_at: datetime | None
 
 
 class MessageReadUserSummary(BaseModel):
     id: UUID
     nick: str
-    character_name: str | None
     avatar_updated_at: datetime | None
 
 

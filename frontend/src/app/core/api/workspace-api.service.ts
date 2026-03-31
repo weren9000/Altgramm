@@ -43,13 +43,11 @@ export class WorkspaceApiService {
   updateCurrentUserProfile(
     token: string,
     payload: {
-      characterName: string;
       avatarFile?: File | null;
       removeAvatar?: boolean;
     }
   ): Observable<CurrentUserResponse> {
     const formData = new FormData();
-    formData.append('character_name', payload.characterName);
     formData.append('remove_avatar', payload.removeAvatar === true ? 'true' : 'false');
     if (payload.avatarFile) {
       formData.append('avatar', payload.avatarFile, payload.avatarFile.name);

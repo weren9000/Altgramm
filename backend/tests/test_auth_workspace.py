@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from contextlib import contextmanager
 from uuid import uuid4
@@ -39,7 +39,7 @@ def login_admin_user(client: TestClient) -> str:
     response = client.post(
         "/api/auth/login",
         json={
-            "login": "weren9000",
+            "email": "weren9000",
             "password": "Vfrfhjys9000",
         },
     )
@@ -54,11 +54,10 @@ def login_admin_user(client: TestClient) -> str:
 def register_regular_user(client: TestClient) -> tuple[str, dict[str, str]]:
     suffix = uuid4().hex[:8]
     payload = {
-        "login": f"player_{suffix}",
+        "email": f"player_{suffix}@example.test",
         "password": "testpass123",
-        "full_name": "Иван Петров",
+        "password_confirmation": "testpass123",
         "nick": f"hero_{suffix}",
-        "character_name": "Рыцарь Севера",
     }
     response = client.post("/api/auth/register", json=payload)
 
@@ -106,7 +105,7 @@ def get_seed_server_and_voice_channel(client: TestClient, token: str) -> tuple[d
     voice_channel = next(
         channel
         for channel in channels_response.json()
-        if channel["type"] == "voice" and channel["name"] != "Таверна"
+        if channel["type"] == "voice" and channel["name"] != "РўР°РІРµСЂРЅР°"
     )
     return server, voice_channel
 
@@ -124,7 +123,7 @@ def get_seed_server_and_tavern_channel(client: TestClient, token: str) -> tuple[
     voice_channel = next(
         channel
         for channel in channels_response.json()
-        if channel["type"] == "voice" and channel["name"] == "Таверна"
+        if channel["type"] == "voice" and channel["name"] == "РўР°РІРµСЂРЅР°"
     )
     return server, voice_channel
 
@@ -148,8 +147,8 @@ def create_temp_text_channel(client: TestClient, token: str, suffix: str) -> tup
         "/api/servers",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "name": f"Текстовая группа {suffix}",
-            "description": "Временная группа для тестов сообщений",
+            "name": f"РўРµРєСЃС‚РѕРІР°СЏ РіСЂСѓРїРїР° {suffix}",
+            "description": "Р’СЂРµРјРµРЅРЅР°СЏ РіСЂСѓРїРїР° РґР»СЏ С‚РµСЃС‚РѕРІ СЃРѕРѕР±С‰РµРЅРёР№",
         },
     )
     assert create_group_response.status_code == 201
@@ -159,8 +158,8 @@ def create_temp_text_channel(client: TestClient, token: str, suffix: str) -> tup
         f"/api/servers/{group['id']}/channels",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "name": f"чат-{suffix}",
-            "topic": "Тестовый чат",
+            "name": f"С‡Р°С‚-{suffix}",
+            "topic": "РўРµСЃС‚РѕРІС‹Р№ С‡Р°С‚",
             "type": "text",
         },
     )
@@ -192,18 +191,17 @@ def test_register_user_returns_session_and_profile() -> None:
             login_response = client.post(
                 "/api/auth/login",
                 json={
-                    "login": payload["login"],
+                    "email": payload["email"],
                     "password": payload["password"],
                 },
             )
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert login_response.status_code == 200
     user = login_response.json()["user"]
-    assert user["login"] == payload["login"]
+    assert user["email"] == payload["email"]
     assert user["nick"] == payload["nick"]
-    assert user["character_name"] == payload["character_name"]
     assert user["is_admin"] is False
 
 
@@ -214,12 +212,12 @@ def test_current_user_endpoint_returns_admin_user() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["login"] == "weren9000"
+    assert payload["email"] == "weren9000"
     assert payload["nick"] == "weren9000"
     assert payload["is_admin"] is True
 
 
-def test_user_can_update_character_name_and_avatar() -> None:
+def test_user_can_update_avatar() -> None:
     with TestClient(app) as client:
         token, payload = register_regular_user(client)
 
@@ -227,17 +225,13 @@ def test_user_can_update_character_name_and_avatar() -> None:
             update_response = client.put(
                 "/api/me/profile",
                 headers={"Authorization": f"Bearer {token}"},
-                data={
-                    "character_name": "Архонт Теней",
-                    "remove_avatar": "false",
-                },
+                data={"remove_avatar": "false"},
                 files={
                     "avatar": ("avatar.png", TEST_PNG_BYTES, "image/png"),
                 },
             )
             assert update_response.status_code == 200
             updated_user = update_response.json()
-            assert updated_user["character_name"] == "Архонт Теней"
             assert updated_user["avatar_updated_at"] is not None
 
             current_user_response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
@@ -249,7 +243,7 @@ def test_user_can_update_character_name_and_avatar() -> None:
             assert avatar_response.headers["content-type"].startswith("image/png")
             assert avatar_response.content == TEST_PNG_BYTES
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
 
 def test_admin_can_create_text_and_voice_channels() -> None:
@@ -261,8 +255,8 @@ def test_admin_can_create_text_and_voice_channels() -> None:
             "/api/servers",
             headers={"Authorization": f"Bearer {token}"},
             json={
-                "name": f"Группа {suffix}",
-                "description": "Тестовая группа администратора",
+                "name": f"Р“СЂСѓРїРїР° {suffix}",
+                "description": "РўРµСЃС‚РѕРІР°СЏ РіСЂСѓРїРїР° Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°",
             },
         )
 
@@ -274,8 +268,8 @@ def test_admin_can_create_text_and_voice_channels() -> None:
                 f"/api/servers/{group['id']}/channels",
                 headers={"Authorization": f"Bearer {token}"},
                 json={
-                    "name": f"текст-{suffix}",
-                    "topic": "Рабочий текстовый канал",
+                    "name": f"С‚РµРєСЃС‚-{suffix}",
+                    "topic": "Р Р°Р±РѕС‡РёР№ С‚РµРєСЃС‚РѕРІС‹Р№ РєР°РЅР°Р»",
                     "type": "text",
                 },
             )
@@ -283,8 +277,8 @@ def test_admin_can_create_text_and_voice_channels() -> None:
                 f"/api/servers/{group['id']}/channels",
                 headers={"Authorization": f"Bearer {token}"},
                 json={
-                    "name": f"голос-{suffix}",
-                    "topic": "Рабочая голосовая комната",
+                    "name": f"РіРѕР»РѕСЃ-{suffix}",
+                    "topic": "Р Р°Р±РѕС‡Р°СЏ РіРѕР»РѕСЃРѕРІР°СЏ РєРѕРјРЅР°С‚Р°",
                     "type": "voice",
                 },
             )
@@ -300,7 +294,7 @@ def test_admin_can_create_text_and_voice_channels() -> None:
     assert voice_channel_response.status_code == 201
     assert voice_channel_response.json()["type"] == "voice"
     assert channels_response.status_code == 200
-    assert any(channel["name"] == "Таверна" for channel in channels_response.json())
+    assert any(channel["name"] == "РўР°РІРµСЂРЅР°" for channel in channels_response.json())
 
 
 def test_admin_can_delete_text_and_voice_channels() -> None:
@@ -312,8 +306,8 @@ def test_admin_can_delete_text_and_voice_channels() -> None:
             "/api/servers",
             headers={"Authorization": f"Bearer {token}"},
             json={
-                "name": f"Группа удаления {suffix}",
-                "description": "Проверка удаления каналов",
+                "name": f"Р“СЂСѓРїРїР° СѓРґР°Р»РµРЅРёСЏ {suffix}",
+                "description": "РџСЂРѕРІРµСЂРєР° СѓРґР°Р»РµРЅРёСЏ РєР°РЅР°Р»РѕРІ",
             },
         )
 
@@ -325,8 +319,8 @@ def test_admin_can_delete_text_and_voice_channels() -> None:
                 f"/api/servers/{group['id']}/channels",
                 headers={"Authorization": f"Bearer {token}"},
                 json={
-                    "name": f"текст-{suffix}",
-                    "topic": "Удаляемый текстовый канал",
+                    "name": f"С‚РµРєСЃС‚-{suffix}",
+                    "topic": "РЈРґР°Р»СЏРµРјС‹Р№ С‚РµРєСЃС‚РѕРІС‹Р№ РєР°РЅР°Р»",
                     "type": "text",
                 },
             )
@@ -334,8 +328,8 @@ def test_admin_can_delete_text_and_voice_channels() -> None:
                 f"/api/servers/{group['id']}/channels",
                 headers={"Authorization": f"Bearer {token}"},
                 json={
-                    "name": f"голос-{suffix}",
-                    "topic": "Удаляемый голосовой канал",
+                    "name": f"РіРѕР»РѕСЃ-{suffix}",
+                    "topic": "РЈРґР°Р»СЏРµРјС‹Р№ РіРѕР»РѕСЃРѕРІРѕР№ РєР°РЅР°Р»",
                     "type": "voice",
                 },
             )
@@ -377,8 +371,8 @@ def test_admin_can_update_server_icon() -> None:
             "/api/servers",
             headers={"Authorization": f"Bearer {token}"},
             json={
-                "name": f"Иконка Группа {suffix}",
-                "description": "Группа для проверки иконки",
+                "name": f"РРєРѕРЅРєР° Р“СЂСѓРїРїР° {suffix}",
+                "description": "Р“СЂСѓРїРїР° РґР»СЏ РїСЂРѕРІРµСЂРєРё РёРєРѕРЅРєРё",
             },
         )
         assert create_group_response.status_code == 201
@@ -388,10 +382,10 @@ def test_admin_can_update_server_icon() -> None:
             update_response = client.patch(
                 f"/api/servers/{group['id']}/icon",
                 headers={"Authorization": f"Bearer {token}"},
-                json={"icon_asset": "Империя.png"},
+                json={"icon_asset": "РРјРїРµСЂРёСЏ.png"},
             )
             assert update_response.status_code == 200
-            assert update_response.json()["icon_asset"] == "Империя.png"
+            assert update_response.json()["icon_asset"] == "РРјРїРµСЂРёСЏ.png"
 
             servers_response = client.get("/api/servers", headers={"Authorization": f"Bearer {token}"})
             assert servers_response.status_code == 200
@@ -399,7 +393,7 @@ def test_admin_can_update_server_icon() -> None:
             delete_server(group["id"])
 
     updated_group = next(server for server in servers_response.json() if server["id"] == group["id"])
-    assert updated_group["icon_asset"] == "Империя.png"
+    assert updated_group["icon_asset"] == "РРјРїРµСЂРёСЏ.png"
 
 
 def test_regular_user_cannot_create_group() -> None:
@@ -410,12 +404,12 @@ def test_regular_user_cannot_create_group() -> None:
                 "/api/servers",
                 headers={"Authorization": f"Bearer {token}"},
                 json={
-                    "name": "Запрещенная группа",
-                    "description": "Проверка прав",
+                    "name": "Р—Р°РїСЂРµС‰РµРЅРЅР°СЏ РіСЂСѓРїРїР°",
+                    "description": "РџСЂРѕРІРµСЂРєР° РїСЂР°РІ",
                 },
             )
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert response.status_code == 403
 
@@ -435,7 +429,7 @@ def test_regular_user_cannot_delete_channel() -> None:
             )
         finally:
             delete_server(group["id"])
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert response.status_code == 403
 
@@ -485,7 +479,7 @@ def test_app_events_websocket_pushes_new_message_to_connected_clients() -> None:
                 assert send_message_response.status_code == 201
                 pushed_event = websocket.receive_json()
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert pushed_event["type"] == "message_created"
     assert pushed_event["server_id"] == text_channel["server_id"]
@@ -519,7 +513,7 @@ def test_app_events_websocket_pushes_message_reaction_updates() -> None:
                 assert reaction_response.status_code == 200
                 pushed_event = websocket.receive_json()
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert pushed_event["type"] == "message_reactions_updated"
     assert pushed_event["server_id"] == server["id"]
@@ -543,7 +537,7 @@ def test_regular_user_can_access_all_groups_channels_and_members() -> None:
                 headers={"Authorization": f"Bearer {token}"},
             )
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert servers_response.status_code == 200
     listed_server = next(item for item in servers_response.json() if item["id"] == server["id"])
@@ -552,7 +546,7 @@ def test_regular_user_can_access_all_groups_channels_and_members() -> None:
     assert channels_response.status_code == 200
     channels = channels_response.json()
     assert any(channel["id"] == text_channel["id"] for channel in channels)
-    tavern_channel = next(channel for channel in channels if channel["type"] == "voice" and channel["name"] == "Таверна")
+    tavern_channel = next(channel for channel in channels if channel["type"] == "voice" and channel["name"] == "РўР°РІРµСЂРЅР°")
     assert tavern_channel["voice_access_role"] == "resident"
 
     assert members_response.status_code == 200
@@ -631,7 +625,7 @@ def test_regular_user_can_join_voice_channel_as_resident() -> None:
                 assert room_state["type"] == "room_state"
                 assert isinstance(room_state["self_id"], str)
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
 
 def test_regular_user_can_join_default_tavern_without_manual_assignment() -> None:
@@ -645,7 +639,7 @@ def test_regular_user_can_join_default_tavern_without_manual_assignment() -> Non
                 assert room_state["type"] == "room_state"
                 assert isinstance(room_state["self_id"], str)
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
 
 def test_stranger_can_request_voice_access_and_join_after_owner_allows() -> None:
@@ -701,7 +695,7 @@ def test_stranger_can_request_voice_access_and_join_after_owner_allows() -> None
                 assert room_state["type"] == "room_state"
                 assert isinstance(room_state["self_id"], str)
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
 
 def test_kicked_stranger_sees_retry_wait_details() -> None:
@@ -743,14 +737,14 @@ def test_kicked_stranger_sees_retry_wait_details() -> None:
                 headers={"Authorization": f"Bearer {token}"},
             )
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert blocked_response.status_code == 403
     detail = blocked_response.json()["detail"]
     assert detail["blocked_until"] is not None
     assert isinstance(detail["retry_after_seconds"], int)
     assert 1 <= detail["retry_after_seconds"] <= 300
-    assert "Повторить попытку можно через" in detail["message"]
+    assert "РџРѕРІС‚РѕСЂРёС‚СЊ РїРѕРїС‹С‚РєСѓ РјРѕР¶РЅРѕ С‡РµСЂРµР·" in detail["message"]
 
 
 def test_kicked_stranger_voice_websocket_is_closed_immediately() -> None:
@@ -794,7 +788,7 @@ def test_kicked_stranger_voice_websocket_is_closed_immediately() -> None:
                 with pytest.raises(WebSocketDisconnect) as disconnect_error:
                     socket.receive_json()
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert disconnect_error.value.code == 4003
 
@@ -841,7 +835,7 @@ def test_owner_mute_updates_voice_socket_and_presence() -> None:
                     headers={"Authorization": f"Bearer {token}"},
                 )
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert presence_response.status_code == 200
     channels = presence_response.json()
@@ -917,7 +911,7 @@ def test_hidden_voice_channel_messages_are_not_accessible_without_role() -> None
                 data={"content": "hidden-voice-chat"},
             )
         finally:
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert list_response.status_code == 404
     assert create_response.status_code == 404
@@ -963,14 +957,14 @@ def test_can_send_message_with_attachment_and_download_it() -> None:
             create_message_response = client.post(
                 f"/api/channels/{channel['id']}/messages",
                 headers={"Authorization": f"Bearer {token}"},
-                data={"content": "Сообщение с вложением"},
+                data={"content": "РЎРѕРѕР±С‰РµРЅРёРµ СЃ РІР»РѕР¶РµРЅРёРµРј"},
                 files=[
                     ("files", ("brief.txt", b"Altgramm attachment payload", "text/plain")),
                 ],
             )
             assert create_message_response.status_code == 201
             created_message = create_message_response.json()
-            assert created_message["content"] == "Сообщение с вложением"
+            assert created_message["content"] == "РЎРѕРѕР±С‰РµРЅРёРµ СЃ РІР»РѕР¶РµРЅРёРµРј"
             assert len(created_message["attachments"]) == 1
 
             attachment_id = created_message["attachments"][0]["id"]
@@ -1074,7 +1068,7 @@ def test_can_reply_to_existing_message() -> None:
             root_message_response = client.post(
                 f"/api/channels/{channel['id']}/messages",
                 headers={"Authorization": f"Bearer {token}"},
-                data={"content": "Исходное сообщение"},
+                data={"content": "РСЃС…РѕРґРЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ"},
             )
             assert root_message_response.status_code == 201
             root_message = root_message_response.json()
@@ -1083,7 +1077,7 @@ def test_can_reply_to_existing_message() -> None:
                 f"/api/channels/{channel['id']}/messages",
                 headers={"Authorization": f"Bearer {token}"},
                 data={
-                    "content": "Ответ на сообщение",
+                    "content": "РћС‚РІРµС‚ РЅР° СЃРѕРѕР±С‰РµРЅРёРµ",
                     "reply_to_message_id": root_message["id"],
                 },
             )
@@ -1097,9 +1091,9 @@ def test_can_reply_to_existing_message() -> None:
             delete_server(group["id"])
 
     assert list_response.status_code == 200
-    reply_message = next(message for message in list_response.json()["items"] if message["content"] == "Ответ на сообщение")
+    reply_message = next(message for message in list_response.json()["items"] if message["content"] == "РћС‚РІРµС‚ РЅР° СЃРѕРѕР±С‰РµРЅРёРµ")
     assert reply_message["reply_to"]["id"] == root_message["id"]
-    assert reply_message["reply_to"]["content"] == "Исходное сообщение"
+    assert reply_message["reply_to"]["content"] == "РСЃС…РѕРґРЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ"
 
 
 def test_message_read_state_updates_message_and_pushes_event() -> None:
@@ -1114,7 +1108,7 @@ def test_message_read_state_updates_message_and_pushes_event() -> None:
             message_response = client.post(
                 f"/api/channels/{channel['id']}/messages",
                 headers={"Authorization": f"Bearer {admin_token}"},
-                data={"content": "Сообщение для прочтения"},
+                data={"content": "РЎРѕРѕР±С‰РµРЅРёРµ РґР»СЏ РїСЂРѕС‡С‚РµРЅРёСЏ"},
             )
             assert message_response.status_code == 201
             message = message_response.json()
@@ -1134,7 +1128,7 @@ def test_message_read_state_updates_message_and_pushes_event() -> None:
             )
         finally:
             delete_server(group["id"])
-            delete_user(payload["login"])
+            delete_user(payload["email"])
 
     assert read_event["type"] == "message_read_updated"
     assert read_event["channel_id"] == channel["id"]
@@ -1142,3 +1136,5 @@ def test_message_read_state_updates_message_and_pushes_event() -> None:
     listed_message = next(item for item in list_response.json()["items"] if item["id"] == message["id"])
     assert len(listed_message["read_by"]) == 1
     assert listed_message["read_by"][0]["id"] == mark_read_response.json()["user_id"]
+
+

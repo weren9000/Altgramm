@@ -1,4 +1,4 @@
-import { HttpErrorResponse } from '@angular/common/http';
+﻿import { HttpErrorResponse } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -63,16 +63,15 @@ type VoiceWorkspaceTab = 'chat' | 'channel';
 type ConversationCreateTab = 'direct' | 'group';
 
 interface LoginFormModel {
-  login: string;
+  email: string;
   password: string;
 }
 
 interface RegisterFormModel {
-  login: string;
+  email: string;
   password: string;
-  full_name: string;
+  password_confirmation: string;
   nick: string;
-  character_name: string;
 }
 
 interface CreateGroupFormModel {
@@ -112,8 +111,6 @@ interface GroupMemberItem {
   userId: string;
   login: string;
   nick: string;
-  fullName: string;
-  characterName: string | null;
   avatarUpdatedAt: string | null;
   role: string;
   roleLabel: string;
@@ -125,7 +122,6 @@ interface GroupMemberItem {
 
 interface ProfileUpdateTrigger {
   token: string;
-  characterName: string;
   avatarFile: File | null;
   removeAvatar: boolean;
   successMessage: string;
@@ -574,7 +570,6 @@ export class AppComponent {
   readonly profileSaving = signal(false);
   readonly profileNotice = signal<string | null>(null);
   readonly profileError = signal<string | null>(null);
-  readonly profileCharacterNameDraft = signal('');
   readonly profileAvatarFile = signal<File | null>(null);
   readonly profileAvatarPreviewUrl = signal<string | null>(null);
   readonly profileAvatarRemove = signal(false);
@@ -597,16 +592,15 @@ export class AppComponent {
   }));
 
   readonly loginForm: LoginFormModel = {
-    login: '',
+    email: '',
     password: ''
   };
 
   readonly registerForm: RegisterFormModel = {
-    login: '',
+    email: '',
     password: '',
-    full_name: '',
-    nick: '',
-    character_name: ''
+    password_confirmation: '',
+    nick: ''
   };
 
   readonly createGroupForm: CreateGroupFormModel = {
@@ -792,8 +786,8 @@ export class AppComponent {
         return left.is_online ? -1 : 1;
       }
 
-      return this.displayCharacterName(left.character_name, left.nick)
-        .localeCompare(this.displayCharacterName(right.character_name, right.nick), 'ru');
+      return this.displayNick(left.nick)
+        .localeCompare(this.displayNick(right.nick), 'ru');
     })
   );
   readonly currentUserAvatarUrl = computed(() =>
@@ -806,14 +800,8 @@ export class AppComponent {
       return false;
     }
 
-    const normalizedCharacterName = this.profileCharacterNameDraft().trim();
-    if (normalizedCharacterName.length < 2) {
-      return false;
-    }
-
     return (
-      normalizedCharacterName !== (currentUser.character_name ?? '').trim()
-      || this.profileAvatarFile() !== null
+      this.profileAvatarFile() !== null
       || this.profileAvatarRemove()
     );
   });
@@ -983,8 +971,6 @@ export class AppComponent {
           id: participant.participant_id,
           user_id: participant.user_id,
           nick: participant.nick,
-          full_name: participant.full_name,
-          character_name: participant.character_name,
           avatar_updated_at: participant.avatar_updated_at,
           muted: participant.muted,
           owner_muted: participant.owner_muted,
@@ -1012,8 +998,6 @@ export class AppComponent {
           userId: member.user_id,
           login: member.login,
           nick: member.nick,
-          fullName: member.full_name,
-          characterName: member.character_name,
           avatarUpdatedAt: member.avatar_updated_at,
           role: member.role,
           roleLabel: this.formatMemberRole(member.role),
@@ -1700,9 +1684,8 @@ export class AppComponent {
   private bindProfilePipeline(): void {
     this.profileUpdateTrigger$
       .pipe(
-        exhaustMap(({ token, characterName, avatarFile, removeAvatar, successMessage, closeEditor }) =>
+        exhaustMap(({ token, avatarFile, removeAvatar, successMessage, closeEditor }) =>
           this.workspaceApi.updateCurrentUserProfile(token, {
-            characterName,
             avatarFile,
             removeAvatar
           }).pipe(
@@ -1717,7 +1700,6 @@ export class AppComponent {
             }),
             catchError((error) => {
               if (!closeEditor) {
-                this.profileCharacterNameDraft.set(this.currentUser()?.character_name ?? '');
                 this.profileEditorOpen.set(true);
               }
               this.profileError.set(this.extractErrorMessage(error, 'Не удалось обновить профиль'));
@@ -1740,7 +1722,7 @@ export class AppComponent {
           this.workspaceApi.updateVoiceChannelAccess(token, channelId, member.userId, role).pipe(
             tap((entries) => {
               this.setVoiceChannelAccessEntries(channelId, entries);
-              const memberName = this.displayCharacterName(member.characterName, member.nick);
+              const memberName = this.displayNick(member.nick);
               this.managementSuccess.set(
                 role === 'resident'
                   ? `${memberName} теперь житель канала`
@@ -1766,7 +1748,7 @@ export class AppComponent {
           this.workspaceApi.kickVoiceParticipant(token, channelId, member.userId).pipe(
             tap((entries) => {
               this.setVoiceChannelAccessEntries(channelId, entries);
-              this.managementSuccess.set(`${this.displayCharacterName(member.characterName, member.nick)} выгнан из канала на 5 минут`);
+              this.managementSuccess.set(`${this.displayNick(member.nick)} выгнан из канала на 5 минут`);
             }),
             catchError((error) => {
               this.managementError.set(this.extractErrorMessage(error, 'Не удалось выгнать участника'));
@@ -1787,7 +1769,7 @@ export class AppComponent {
           this.workspaceApi.updateVoiceParticipantOwnerMute(token, channelId, member.userId, nextOwnerMuted).pipe(
             tap((entries) => {
               this.setVoiceChannelAccessEntries(channelId, entries);
-              const memberName = this.displayCharacterName(member.characterName, member.nick);
+              const memberName = this.displayNick(member.nick);
               this.managementSuccess.set(
                 nextOwnerMuted
                   ? `${memberName}: микрофон заблокирован владельцем`
@@ -1919,12 +1901,12 @@ export class AppComponent {
 
   submitLogin(): void {
     const payload: AuthLoginRequest = {
-      login: this.loginForm.login.trim(),
+      email: this.loginForm.email.trim(),
       password: this.loginForm.password
     };
 
-    if (!payload.login || !payload.password) {
-      this.authError.set('Введите логин и пароль');
+    if (!payload.email || !payload.password) {
+      this.authError.set('Введите email и пароль');
       return;
     }
 
@@ -1935,15 +1917,19 @@ export class AppComponent {
 
   submitRegistration(): void {
     const payload: AuthRegisterRequest = {
-      login: this.registerForm.login.trim(),
+      email: this.registerForm.email.trim(),
       password: this.registerForm.password,
-      full_name: this.registerForm.full_name.trim(),
-      nick: this.registerForm.nick.trim(),
-      character_name: this.registerForm.character_name.trim()
+      password_confirmation: this.registerForm.password_confirmation,
+      nick: this.registerForm.nick.trim()
     };
 
-    if (!payload.login || !payload.password || !payload.full_name || !payload.nick || !payload.character_name) {
-      this.authError.set('Заполните все поля регистрации');
+    if (!payload.email || !payload.password || !payload.password_confirmation || !payload.nick) {
+      this.authError.set('Заполните email, ник и оба поля пароля');
+      return;
+    }
+
+    if (payload.password !== payload.password_confirmation) {
+      this.authError.set('Пароли не совпадают');
       return;
     }
 
@@ -1965,7 +1951,6 @@ export class AppComponent {
     }
 
     this.closeMobilePanel();
-    this.profileCharacterNameDraft.set(currentUser.character_name ?? '');
     this.profileAvatarRemove.set(false);
     this.profileError.set(null);
     this.profileNotice.set(null);
@@ -1978,9 +1963,6 @@ export class AppComponent {
     this.profileError.set(null);
     this.profileAvatarRemove.set(false);
     this.clearPendingProfileAvatar();
-    if (this.currentUser()) {
-      this.profileCharacterNameDraft.set(this.currentUser()?.character_name ?? '');
-    }
   }
 
   openProfileAvatarPicker(mode: 'instant' | 'editor' = 'instant'): void {
@@ -2021,7 +2003,6 @@ export class AppComponent {
       this.profileNotice.set(null);
       this.profileUpdateTrigger$.next({
         token,
-        characterName: currentUser.character_name ?? currentUser.nick,
         avatarFile: preparedFile,
         removeAvatar: false,
         successMessage: 'Аватарка обновлена',
@@ -2029,7 +2010,6 @@ export class AppComponent {
       });
     } catch (error) {
       if (this.profileAvatarSelectionMode === 'instant') {
-        this.profileCharacterNameDraft.set(this.currentUser()?.character_name ?? '');
         this.profileEditorOpen.set(true);
       }
       this.profileError.set(error instanceof Error ? error.message : 'Не удалось подготовить аватарку');
@@ -2047,16 +2027,10 @@ export class AppComponent {
 
   submitProfileChanges(): void {
     const token = this.session()?.access_token;
-    const currentUser = this.currentUser();
-    const normalizedCharacterName = this.profileCharacterNameDraft().trim();
-    if (!token || !currentUser) {
+    if (!token || !this.currentUser()) {
       return;
     }
 
-    if (normalizedCharacterName.length < 2) {
-      this.profileError.set('Имя персонажа должно быть не короче 2 символов');
-      return;
-    }
 
     if (!this.canSubmitProfile()) {
       this.profileEditorOpen.set(false);
@@ -2068,7 +2042,6 @@ export class AppComponent {
     this.profileNotice.set(null);
     this.profileUpdateTrigger$.next({
       token,
-      characterName: normalizedCharacterName,
       avatarFile: this.profileAvatarFile(),
       removeAvatar: this.profileAvatarRemove(),
       successMessage: 'Профиль обновлен',
@@ -2291,8 +2264,6 @@ export class AppComponent {
     this.directCall.openCall({
       user_id: member.userId,
       nick: member.nick,
-      full_name: member.fullName,
-      character_name: member.characterName,
       avatar_updated_at: member.avatarUpdatedAt,
     });
   }
@@ -2380,7 +2351,7 @@ export class AppComponent {
       return 'собеседник';
     }
 
-    return this.displayCharacterName(peer.character_name, peer.nick);
+    return this.displayNick(peer.nick);
   }
 
   private syncDirectCallScreenVideos(): void {
@@ -2768,7 +2739,7 @@ export class AppComponent {
 
     const names = message.read_by
       .slice(0, 3)
-      .map((reader) => this.displayCharacterName(reader.character_name, reader.nick));
+      .map((reader) => this.displayNick(reader.nick));
     const suffix = message.read_by.length > 3 ? ` и еще ${message.read_by.length - 3}` : '';
     return `Прочитали: ${names.join(', ')}${suffix}`;
   }
@@ -3849,7 +3820,6 @@ export class AppComponent {
             {
               id: readerId,
               nick: event.state.nick,
-              character_name: event.state.character_name,
               avatar_updated_at: event.state.avatar_updated_at,
             },
             ...withoutReader,
@@ -4831,8 +4801,6 @@ export class AppComponent {
             ? {
                 ...message.author,
                 nick: member.nick,
-                full_name: member.full_name,
-                character_name: member.character_name,
                 avatar_updated_at: member.avatar_updated_at
               }
             : message.author,
@@ -4842,8 +4810,6 @@ export class AppComponent {
                 author: {
                   ...message.reply_to.author,
                   nick: replyAuthorMember.nick,
-                  full_name: replyAuthorMember.full_name,
-                  character_name: replyAuthorMember.character_name,
                   avatar_updated_at: replyAuthorMember.avatar_updated_at
                 }
               }
@@ -4854,7 +4820,6 @@ export class AppComponent {
               ? {
                   ...reader,
                   nick: readerMember.nick,
-                  character_name: readerMember.character_name,
                   avatar_updated_at: readerMember.avatar_updated_at
                 }
               : reader;
@@ -4870,8 +4835,6 @@ export class AppComponent {
         id: participant.participant_id,
         user_id: participant.user_id,
         nick: participant.nick,
-        full_name: participant.full_name,
-        character_name: participant.character_name,
         avatar_updated_at: participant.avatar_updated_at,
         muted: participant.muted,
         owner_muted: participant.owner_muted,
@@ -4905,8 +4868,6 @@ export class AppComponent {
           ? {
               ...member,
               nick: updatedUser.nick,
-              full_name: updatedUser.full_name,
-              character_name: updatedUser.character_name,
               avatar_updated_at: updatedUser.avatar_updated_at
             }
           : member
@@ -4922,9 +4883,7 @@ export class AppComponent {
               ? {
                   ...message.author,
                   nick: updatedUser.nick,
-                  full_name: updatedUser.full_name,
-                  character_name: updatedUser.character_name,
-                  avatar_updated_at: updatedUser.avatar_updated_at
+                          avatar_updated_at: updatedUser.avatar_updated_at
                 }
               : message.author,
           reply_to:
@@ -4934,9 +4893,7 @@ export class AppComponent {
                   author: {
                     ...message.reply_to.author,
                     nick: updatedUser.nick,
-                    full_name: updatedUser.full_name,
-                    character_name: updatedUser.character_name,
-                    avatar_updated_at: updatedUser.avatar_updated_at
+                                avatar_updated_at: updatedUser.avatar_updated_at
                   }
                 }
               : message.reply_to,
@@ -4945,8 +4902,7 @@ export class AppComponent {
               ? {
                   ...reader,
                   nick: updatedUser.nick,
-                  character_name: updatedUser.character_name,
-                  avatar_updated_at: updatedUser.avatar_updated_at
+                      avatar_updated_at: updatedUser.avatar_updated_at
                 }
               : reader
           )
@@ -4962,9 +4918,7 @@ export class AppComponent {
             ? {
                 ...participant,
                 nick: updatedUser.nick,
-                full_name: updatedUser.full_name,
-                character_name: updatedUser.character_name,
-                avatar_updated_at: updatedUser.avatar_updated_at
+                    avatar_updated_at: updatedUser.avatar_updated_at
               }
             : participant
         )
@@ -4977,8 +4931,6 @@ export class AppComponent {
           ? {
               ...user,
               nick: updatedUser.nick,
-              full_name: updatedUser.full_name,
-              character_name: updatedUser.character_name,
               avatar_updated_at: updatedUser.avatar_updated_at
             }
           : user
@@ -4993,9 +4945,7 @@ export class AppComponent {
             ? {
                 ...entry,
                 nick: updatedUser.nick,
-                full_name: updatedUser.full_name,
-                character_name: updatedUser.character_name,
-                avatar_updated_at: updatedUser.avatar_updated_at
+                    avatar_updated_at: updatedUser.avatar_updated_at
               }
             : entry
         );
@@ -5413,13 +5363,12 @@ export class AppComponent {
     return isOnline ? 'Онлайн' : 'Офлайн';
   }
 
-  displayCharacterName(characterName: string | null | undefined, nick: string): string {
-    const normalizedCharacterName = characterName?.trim();
-    return normalizedCharacterName ? normalizedCharacterName : nick;
+  displayNick(nick: string | null | undefined): string {
+    return (nick ?? '').trim();
   }
 
-  displayCharacterInitials(characterName: string | null | undefined, nick: string): string {
-    const label = this.displayCharacterName(characterName, nick).trim();
+  displayNickInitials(nick: string | null | undefined): string {
+    const label = this.displayNick(nick).trim();
     if (!label) {
       return '--';
     }

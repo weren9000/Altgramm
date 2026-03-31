@@ -14,8 +14,6 @@ class VoiceParticipant:
     id: str
     user_id: str
     nick: str
-    full_name: str
-    character_name: str | None
     avatar_updated_at: datetime | None = None
     muted: bool = False
     owner_muted: bool = False
@@ -25,8 +23,6 @@ class VoiceParticipant:
             "id": self.id,
             "user_id": self.user_id,
             "nick": self.nick,
-            "full_name": self.full_name,
-            "character_name": self.character_name,
             "avatar_updated_at": self.avatar_updated_at.isoformat() if self.avatar_updated_at is not None else None,
             "muted": self.muted,
             "owner_muted": self.owner_muted,
@@ -51,8 +47,6 @@ class VoiceSignalingManager:
         *,
         user_id: str,
         nick: str,
-        full_name: str,
-        character_name: str | None,
         avatar_updated_at: datetime | None = None,
         owner_muted: bool = False,
     ) -> VoiceParticipant:
@@ -60,8 +54,6 @@ class VoiceSignalingManager:
             id=uuid4().hex,
             user_id=user_id,
             nick=nick,
-            full_name=full_name,
-            character_name=character_name,
             avatar_updated_at=avatar_updated_at,
             owner_muted=owner_muted,
         )

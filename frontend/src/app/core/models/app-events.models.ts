@@ -48,7 +48,6 @@ export interface AppMessageReadUpdatedEvent {
   channel_id: string;
   state: WorkspaceChannelReadState & {
     nick: string;
-    character_name: string | null;
     avatar_updated_at: string | null;
   };
 }

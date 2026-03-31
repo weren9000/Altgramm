@@ -83,8 +83,6 @@ def _build_server_member_summary(
         user_id=user.id,
         login=user.email,
         nick=user.username,
-        full_name=user.display_name,
-        character_name=user.bio,
         avatar_updated_at=user.avatar_updated_at,
         role=member.role.value,
         is_online=user.id in online_user_ids,
@@ -103,12 +101,6 @@ def _build_voice_channel_presence_summary(
                 participant_id=str(participant["id"]),
                 user_id=UUID(str(participant["user_id"])),
                 nick=str(participant["nick"]),
-                full_name=str(participant["full_name"]),
-                character_name=(
-                    str(participant["character_name"])
-                    if participant.get("character_name") is not None
-                    else None
-                ),
                 avatar_updated_at=(
                     datetime.fromisoformat(str(participant["avatar_updated_at"]))
                     if participant.get("avatar_updated_at") is not None

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from functools import lru_cache
 from typing import Literal
@@ -19,8 +19,6 @@ class Settings(BaseSettings):
     seed_demo_data: bool = True
     demo_login: str = "weren9000"
     demo_nick: str = "weren9000"
-    demo_full_name: str = "Верен Чебыкин"
-    demo_character_name: str = "Архимаг Кельн"
     demo_password: str = "Vfrfhjys9000"
     demo_is_admin: bool = True
     demo_server_name: str = "Altgramm"
