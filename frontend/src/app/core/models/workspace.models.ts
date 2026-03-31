@@ -14,6 +14,7 @@ export interface WorkspaceServer {
   slug: string;
   description: string | null;
   icon_asset: string | null;
+  icon_updated_at: string | null;
   member_role: string;
   kind: 'workspace' | 'direct' | 'group_chat';
 }

@@ -241,6 +241,15 @@ export class WorkspaceApiService {
     );
   }
 
+  uploadServerIcon(token: string, serverId: string, iconFile: File): Observable<WorkspaceServer> {
+    const formData = new FormData();
+    formData.append('icon', iconFile, iconFile.name);
+
+    return this.http.put<WorkspaceServer>(`${API_BASE_URL}/api/servers/${serverId}/icon-file`, formData, {
+      headers: this.buildAuthHeaders(token)
+    });
+  }
+
   createChannel(token: string, serverId: string, payload: CreateWorkspaceChannelRequest): Observable<WorkspaceChannel> {
     return this.http.post<WorkspaceChannel>(`${API_BASE_URL}/api/servers/${serverId}/channels`, payload, {
       headers: this.buildAuthHeaders(token)

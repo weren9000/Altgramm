@@ -83,6 +83,7 @@ def _build_conversation_summary(
         title=title,
         subtitle=subtitle,
         icon_asset=server.icon_asset,
+        icon_updated_at=server.icon_updated_at,
         member_role=membership.role.value,
         primary_channel_id=_first_text_channel(server).id,
         members=[_member_preview(member, online_user_ids) for member in members],

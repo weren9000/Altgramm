@@ -13,6 +13,7 @@ class ServerSummary(BaseModel):
     slug: str
     description: str | None
     icon_asset: str | None = None
+    icon_updated_at: datetime | None = None
     member_role: str
     kind: str = "workspace"
 

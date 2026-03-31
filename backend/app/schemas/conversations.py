@@ -22,6 +22,7 @@ class ConversationSummary(BaseModel):
     title: str
     subtitle: str | None = None
     icon_asset: str | None = None
+    icon_updated_at: datetime | None = None
     member_role: str
     primary_channel_id: UUID
     members: list[ConversationMemberPreview] = Field(default_factory=list)

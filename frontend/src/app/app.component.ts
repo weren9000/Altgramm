@@ -84,7 +84,6 @@ interface CreateGroupFormModel {
 interface CreateConversationFormModel {
   directUserId: string;
   name: string;
-  iconAsset: string;
 }
 
 interface CreateChannelFormModel {
@@ -100,12 +99,6 @@ interface ServerShortcut {
   iconUrl: string | null;
   active: boolean;
   meta: string | null;
-}
-
-interface ServerIconOption {
-  asset: string;
-  label: string;
-  url: string;
 }
 
 interface GroupMemberItem {
@@ -281,11 +274,10 @@ interface PendingServerSwitchState {
   toServerName: string;
 }
 
-interface UpdateServerIconTrigger {
+interface UploadServerIconTrigger {
   token: string;
   serverId: string;
-  iconAsset: string;
-  iconLabel: string;
+  file: File;
 }
 
 interface MessageReactionOption {
@@ -473,7 +465,7 @@ export class AppComponent {
   private readonly voiceMemberOwnerMuteTrigger$ = new Subject<VoiceMemberOwnerMuteTrigger>();
   private readonly resolveVoiceRequestTrigger$ = new Subject<ResolveVoiceRequestTrigger>();
   private readonly voiceJoinRequestTrigger$ = new Subject<VoiceJoinRequestTrigger>();
-  private readonly updateServerIconTrigger$ = new Subject<UpdateServerIconTrigger>();
+  private readonly uploadServerIconTrigger$ = new Subject<UploadServerIconTrigger>();
   private readonly messageReactionTrigger$ = new Subject<MessageReactionTrigger>();
   private readonly profileUpdateTrigger$ = new Subject<ProfileUpdateTrigger>();
   private readonly pendingMessageReactionKeys = new Set<string>();
@@ -492,6 +484,9 @@ export class AppComponent {
 
   @ViewChild('profileAvatarInput')
   private profileAvatarInputRef?: ElementRef<HTMLInputElement>;
+
+  @ViewChild('serverIconInput')
+  private serverIconInputRef?: ElementRef<HTMLInputElement>;
 
   @ViewChild('directCallLocalScreenVideo')
   private set directCallLocalScreenVideoRef(ref: ElementRef<HTMLVideoElement> | undefined) {
@@ -564,7 +559,7 @@ export class AppComponent {
   readonly createGroupModalOpen = signal(false);
   readonly addGroupMemberModalOpen = signal(false);
   readonly createChannelModalOpen = signal(false);
-  readonly serverIconModalOpen = signal(false);
+  readonly groupMembersModalOpen = signal(false);
   readonly sideMenuOpen = signal(false);
   readonly selectedMemberUserId = signal<string | null>(null);
   readonly selectedVoiceMemberChannelId = signal<string | null>(null);
@@ -604,11 +599,6 @@ export class AppComponent {
   readonly pendingServerSwitch = signal<PendingServerSwitchState | null>(null);
   readonly conversationCreateTab = signal<ConversationCreateTab>('direct');
   readonly createConversationGroupMemberIds = signal<string[]>([]);
-  readonly serverIconOptions: ServerIconOption[] = SERVER_ICON_ASSETS.map((asset) => ({
-    asset,
-    label: asset.replace(/\.png$/i, ''),
-    url: this.buildServerIconAssetUrl(asset)
-  }));
 
   readonly loginForm: LoginFormModel = {
     email: '',
@@ -630,7 +620,6 @@ export class AppComponent {
   readonly createConversationForm: CreateConversationFormModel = {
     directUserId: '',
     name: '',
-    iconAsset: ''
   };
 
   readonly createChannelForm: CreateChannelFormModel = {
@@ -686,6 +675,7 @@ export class AppComponent {
       slug: conversation.id,
       description: conversation.subtitle,
       icon_asset: conversation.icon_asset,
+      icon_updated_at: conversation.icon_updated_at,
       member_role: conversation.member_role,
       kind: conversation.kind,
     }))
@@ -697,6 +687,7 @@ export class AppComponent {
       slug: conversation.id,
       description: conversation.subtitle,
       icon_asset: conversation.icon_asset,
+      icon_updated_at: conversation.icon_updated_at,
       member_role: conversation.member_role,
       kind: conversation.kind,
     }))
@@ -708,6 +699,7 @@ export class AppComponent {
       slug: conversation.id,
       description: conversation.subtitle,
       icon_asset: conversation.icon_asset,
+      icon_updated_at: conversation.icon_updated_at,
       member_role: conversation.member_role,
       kind: conversation.kind,
     }))
@@ -751,12 +743,22 @@ export class AppComponent {
   });
 
   readonly connectedVoiceChannelId = computed(() => this.connectedVoiceChannel()?.id ?? null);
+  readonly activeMessagingChannel = computed(() => {
+    const groupTextChannel = this.activeGroupConversation() ? this.activeGroupTextChannel() : null;
+    if (groupTextChannel) {
+      return groupTextChannel;
+    }
+
+    const activeChannel = this.activeChannel();
+    if (!activeChannel) {
+      return null;
+    }
+
+    return activeChannel.type === 'text' || activeChannel.type === 'voice' ? activeChannel : null;
+  });
   readonly isVoiceChannelSelected = computed(() => this.activeChannel()?.type === 'voice');
   readonly isTextChannelSelected = computed(() => this.activeChannel()?.type === 'text');
-  readonly canUseActiveChannelChat = computed(() => {
-    const activeChannel = this.activeChannel();
-    return activeChannel?.type === 'text' || activeChannel?.type === 'voice';
-  });
+  readonly canUseActiveChannelChat = computed(() => this.activeMessagingChannel() !== null);
   readonly hasVoiceConnection = computed(() => this.voiceRoom.isConnected() && this.connectedVoiceChannel() !== null);
   readonly isInActiveVoiceChannel = computed(
     () => this.hasVoiceConnection() && this.activeChannel()?.id === this.connectedVoiceChannel()?.id
@@ -924,14 +926,6 @@ export class AppComponent {
       || this.profileAvatarRemove()
     );
   });
-  readonly activeServerIconAsset = computed(() => {
-    const activeServer = this.activeServer();
-    if (!activeServer) {
-      return null;
-    }
-
-    return this.resolveServerIconAsset(activeServer);
-  });
 
   readonly statusTone = computed(() => {
     if (
@@ -1069,7 +1063,7 @@ export class AppComponent {
       id: server.id,
       label: this.buildServerLabel(server.name),
       name: server.name,
-      iconUrl: this.resolveSpaceIconUrl(server.id, server.icon_asset),
+      iconUrl: this.resolveSpaceIconUrl(server.id, server.icon_asset, server.icon_updated_at),
       active: server.id === this.selectedServerId(),
       meta: server.kind === 'workspace'
         ? 'Группа'
@@ -1552,7 +1546,6 @@ export class AppComponent {
               this.createConversationModalOpen.set(false);
               this.conversationCreateTab.set('direct');
               this.createConversationForm.name = '';
-              this.createConversationForm.iconAsset = '';
               this.createConversationForm.directUserId = '';
               this.createConversationGroupMemberIds.set([]);
               this.managementSuccess.set(`Мини-группа «${conversation.title}» создана`);
@@ -2019,18 +2012,28 @@ export class AppComponent {
   }
 
   private bindServerIconPipeline(): void {
-    this.updateServerIconTrigger$
+    this.uploadServerIconTrigger$
       .pipe(
-        exhaustMap(({ token, serverId, iconAsset, iconLabel }) =>
-          this.workspaceApi.updateServerIcon(token, serverId, iconAsset).pipe(
+        exhaustMap(({ token, serverId, file }) =>
+          this.workspaceApi.uploadServerIcon(token, serverId, file).pipe(
             tap((updatedServer) => {
               this.servers.update((servers) =>
                 servers
                   .map((server) => (server.id === updatedServer.id ? updatedServer : server))
                   .sort((left, right) => this.compareServers(left, right))
               );
-              this.managementSuccess.set(`Иконка группы «${updatedServer.name}» обновлена: ${iconLabel}`);
-              this.serverIconModalOpen.set(false);
+              this.conversations.update((conversations) =>
+                conversations.map((conversation) =>
+                  conversation.id === updatedServer.id
+                    ? {
+                        ...conversation,
+                        icon_asset: updatedServer.icon_asset,
+                        icon_updated_at: updatedServer.icon_updated_at,
+                      }
+                    : conversation
+                )
+              );
+              this.managementSuccess.set(`Иконка группы «${updatedServer.name}» обновлена`);
             }),
             catchError((error) => {
               this.managementError.set(this.extractErrorMessage(error, 'Не удалось обновить иконку группы'));
@@ -2324,7 +2327,6 @@ export class AppComponent {
     this.conversationCreateTab.set(tab);
     this.createConversationForm.directUserId = '';
     this.createConversationForm.name = '';
-    this.createConversationForm.iconAsset = '';
     this.createConversationGroupMemberIds.set([]);
     this.createConversationModalOpen.set(true);
     this.managementError.set(null);
@@ -2392,42 +2394,68 @@ export class AppComponent {
     this.createChannelModalOpen.set(false);
   }
 
-  openServerIconModal(): void {
+  openServerIconPicker(): void {
     if (!this.canManageActiveGroup() || this.isCompactVoiceWorkspaceViewport() || !this.activeServer()) {
       return;
     }
 
-    this.serverIconModalOpen.set(true);
     this.managementError.set(null);
     this.managementSuccess.set(null);
+    this.serverIconInputRef?.nativeElement.click();
   }
 
-  closeServerIconModal(): void {
-    this.serverIconModalOpen.set(false);
-  }
-
-  selectServerIcon(iconAsset: string): void {
+  onServerIconSelection(event: Event): void {
     const token = this.session()?.access_token;
     const activeServer = this.activeServer();
-    if (!token || !activeServer || this.serverIconSaving()) {
+    const input = event.target as HTMLInputElement | null;
+    const file = input?.files?.[0] ?? null;
+    if (!input) {
       return;
     }
 
-    if (this.resolveServerIconAsset(activeServer) === iconAsset) {
-      this.serverIconModalOpen.set(false);
+    if (!token || !activeServer || this.serverIconSaving() || !file) {
+      input.value = '';
       return;
     }
 
-    const iconLabel = iconAsset.replace(/\.png$/i, '');
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      this.managementError.set('Поддерживаются только PNG и JPG иконки группы');
+      input.value = '';
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      this.managementError.set('Иконка группы превышает лимит 2 МБ');
+      input.value = '';
+      return;
+    }
+
     this.serverIconSaving.set(true);
     this.managementError.set(null);
     this.managementSuccess.set(null);
-    this.updateServerIconTrigger$.next({
+    this.uploadServerIconTrigger$.next({
       token,
       serverId: activeServer.id,
-      iconAsset,
-      iconLabel
+      file,
     });
+    input.value = '';
+  }
+
+  openGroupMembersPanel(): void {
+    if (!this.isGroupsMode()) {
+      return;
+    }
+
+    this.groupMembersModalOpen.set(true);
+  }
+
+  closeGroupMembersPanel(): void {
+    this.groupMembersModalOpen.set(false);
+  }
+
+  openGroupMemberFromPanel(member: GroupMemberItem): void {
+    this.closeGroupMembersPanel();
+    this.openMemberCall(member);
   }
 
   isDeletingChannel(channelId: string): boolean {
@@ -2769,7 +2797,6 @@ export class AppComponent {
     const payload: CreateGroupConversationRequest = {
       name: this.createConversationForm.name.trim(),
       member_ids: this.createConversationGroupMemberIds(),
-      icon_asset: this.createConversationForm.iconAsset.trim() || null,
     };
 
     if (payload.name.length < 2) {
@@ -2941,7 +2968,7 @@ export class AppComponent {
 
   submitMessage(): void {
     const token = this.session()?.access_token;
-    const activeChannel = this.activeChannel();
+    const activeChannel = this.activeMessagingChannel();
     if (
       !token
       || !activeChannel
@@ -3055,7 +3082,11 @@ export class AppComponent {
     }
 
     this.closeMobilePanel();
-    this.selectedChannelId.set(connectedVoiceChannel.id);
+    if (this.activeGroupConversation()) {
+      this.selectedChannelId.set(this.activeGroupTextChannel()?.id ?? connectedVoiceChannel.id);
+    } else {
+      this.selectedChannelId.set(connectedVoiceChannel.id);
+    }
     this.voiceWorkspaceTab.set(this.defaultVoiceWorkspaceTab());
   }
 
@@ -3210,6 +3241,7 @@ export class AppComponent {
     this.createConversationModalOpen.set(false);
     this.createGroupModalOpen.set(false);
     this.createChannelModalOpen.set(false);
+    this.groupMembersModalOpen.set(false);
     this.selectedMemberUserId.set(null);
     this.selectedVoiceMemberChannelId.set(null);
     this.mobilePanel.set(null);
@@ -3228,7 +3260,6 @@ export class AppComponent {
     this.createConversationGroupMemberIds.set([]);
     this.createConversationForm.directUserId = '';
     this.createConversationForm.name = '';
-    this.createConversationForm.iconAsset = '';
     this.authError.set(null);
     this.workspaceError.set(null);
     this.messageError.set(null);
@@ -3303,6 +3334,7 @@ export class AppComponent {
     this.stopMessageAutoRefreshPolling();
     this.closePendingVoiceJoin();
     this.closeBlockedVoiceJoinNotice();
+    this.closeGroupMembersPanel();
     if (this.hasVoiceConnection()) {
       this.voiceRoom.leave();
     }
@@ -4014,7 +4046,7 @@ export class AppComponent {
       return;
     }
 
-    const activeChannel = this.activeChannel();
+    const activeChannel = this.activeMessagingChannel();
     if (
       !activeChannel
       || (activeChannel.type !== 'text' && activeChannel.type !== 'voice')
@@ -4090,6 +4122,15 @@ export class AppComponent {
     preferredSelectedChannelId: string | null = this.selectedChannelId()
   ): void {
     const connectedVoiceChannelId = this.voiceRoom.activeChannelId();
+    const preferredGroupTextChannelId = this.activeGroupConversation()
+      ? (channels.find((channel) => channel.type === 'text')?.id ?? null)
+      : null;
+    const normalizedPreferredSelectedChannelId =
+      preferredGroupTextChannelId
+      && preferredSelectedChannelId
+      && channels.find((channel) => channel.id === preferredSelectedChannelId)?.type === 'voice'
+        ? preferredGroupTextChannelId
+        : preferredSelectedChannelId;
 
     this.channels.set(channels);
 
@@ -4098,9 +4139,10 @@ export class AppComponent {
     }
 
     const nextSelectedChannelId =
-      (preferredSelectedChannelId && channels.some((channel) => channel.id === preferredSelectedChannelId)
-        ? preferredSelectedChannelId
+      (normalizedPreferredSelectedChannelId && channels.some((channel) => channel.id === normalizedPreferredSelectedChannelId)
+        ? normalizedPreferredSelectedChannelId
         : null)
+      ?? preferredGroupTextChannelId
       ?? (connectedVoiceChannelId && channels.some((channel) => channel.id === connectedVoiceChannelId)
         ? connectedVoiceChannelId
         : null)
@@ -4555,6 +4597,7 @@ export class AppComponent {
     this.selectedServerId.set(serverId);
     this.appEvents.setActiveServer(serverId);
     this.selectedChannelId.set(null);
+    this.groupMembersModalOpen.set(false);
     this.selectedMemberUserId.set(null);
     this.selectedVoiceMemberChannelId.set(null);
     this.voicePresence.set([]);
@@ -4694,7 +4737,7 @@ export class AppComponent {
 
   private loadOlderMessages(): void {
     const token = this.session()?.access_token;
-    const activeChannel = this.activeChannel();
+    const activeChannel = this.activeMessagingChannel();
     if (
       !token
       || !activeChannel
@@ -4863,7 +4906,7 @@ export class AppComponent {
 
   private refreshCurrentChannelMessages(): void {
     const token = this.session()?.access_token;
-    const activeChannel = this.activeChannel();
+    const activeChannel = this.activeMessagingChannel();
     if (
       !token
       || !activeChannel
@@ -5001,7 +5044,7 @@ export class AppComponent {
   }
 
   private markLatestMessageAsRead(): void {
-    const activeChannel = this.activeChannel();
+    const activeChannel = this.activeMessagingChannel();
     if (!activeChannel || (activeChannel.type !== 'text' && activeChannel.type !== 'voice')) {
       return;
     }
@@ -5482,6 +5525,14 @@ export class AppComponent {
     return SERVER_ICON_URL_BY_ASSET[iconAsset as keyof typeof SERVER_ICON_URL_BY_ASSET] ?? '';
   }
 
+  private buildServerCustomIconUrl(serverId: string, iconUpdatedAt: string | null | undefined): string | null {
+    if (!serverId || !iconUpdatedAt) {
+      return null;
+    }
+
+    return `${API_BASE_URL}/api/servers/${serverId}/icon-file?v=${encodeURIComponent(iconUpdatedAt)}`;
+  }
+
   private mapConversationSpaces(conversations: ConversationSummary[]): WorkspaceServer[] {
     return conversations.map((conversation) => ({
       id: conversation.id,
@@ -5489,6 +5540,7 @@ export class AppComponent {
       slug: conversation.id,
       description: conversation.subtitle,
       icon_asset: conversation.icon_asset,
+      icon_updated_at: conversation.icon_updated_at,
       member_role: conversation.member_role,
       kind: conversation.kind,
     }));
@@ -5499,6 +5551,11 @@ export class AppComponent {
   }
 
   private serverIconUrl(server: WorkspaceServer): string | null {
+    const customIconUrl = this.buildServerCustomIconUrl(server.id, server.icon_updated_at);
+    if (customIconUrl) {
+      return customIconUrl;
+    }
+
     const iconAsset = this.resolveServerIconAsset(server);
     return iconAsset ? this.buildServerIconAssetUrl(iconAsset) : null;
   }
@@ -5514,16 +5571,30 @@ export class AppComponent {
       return this.buildUserAvatarUrl(peer?.user_id ?? null, peer?.avatar_updated_at ?? null);
     }
 
+    const customIconUrl = this.buildServerCustomIconUrl(conversation.id, conversation.icon_updated_at);
+    if (customIconUrl) {
+      return customIconUrl;
+    }
+
     return conversation.icon_asset ? this.buildServerIconAssetUrl(conversation.icon_asset) : null;
   }
 
-  private resolveSpaceIconUrl(spaceId: string, iconAsset: string | null): string | null {
+  private resolveSpaceIconUrl(
+    spaceId: string,
+    iconAsset: string | null,
+    iconUpdatedAt: string | null | undefined = null,
+  ): string | null {
     if (this.isChatsMode()) {
       return this.resolveConversationIconUrl(spaceId);
     }
 
     const server = this.servers().find((item) => item.id === spaceId);
     if (!server) {
+      const customIconUrl = this.buildServerCustomIconUrl(spaceId, iconUpdatedAt);
+      if (customIconUrl) {
+        return customIconUrl;
+      }
+
       return iconAsset ? this.buildServerIconAssetUrl(iconAsset) : null;
     }
 
@@ -5646,6 +5717,11 @@ export class AppComponent {
     if (conversation.kind === 'direct') {
       const peer = this.conversationPeer(conversation);
       return this.userAvatarUrl(peer?.user_id ?? null, peer?.avatar_updated_at ?? null);
+    }
+
+    const customIconUrl = this.buildServerCustomIconUrl(conversation.id, conversation.icon_updated_at);
+    if (customIconUrl) {
+      return customIconUrl;
     }
 
     const iconAsset = conversation.icon_asset ?? DEFAULT_SERVER_ICON_ASSET_BY_NAME[conversation.title] ?? null;

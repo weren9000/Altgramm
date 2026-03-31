@@ -330,13 +330,22 @@
         @if (activeServer()) {
           <section class="conversation-head">
             <div class="conversation-head__identity">
-              <div class="conversation-head__avatar" [class.conversation-head__avatar--group]="isGroupsMode()">
+              <button
+                class="conversation-head__avatar"
+                [class.conversation-head__avatar--group]="isGroupsMode()"
+                [class.conversation-head__avatar--editable]="isGroupsMode() && canEditActiveServerIcon()"
+                type="button"
+                [disabled]="!(isGroupsMode() && canEditActiveServerIcon()) || serverIconSaving()"
+                [attr.title]="isGroupsMode() && canEditActiveServerIcon() ? 'Загрузить иконку группы' : null"
+                [attr.aria-label]="isGroupsMode() && canEditActiveServerIcon() ? 'Загрузить иконку группы' : null"
+                (click)="isGroupsMode() && canEditActiveServerIcon() ? openServerIconPicker() : null"
+              >
                 @if (activeConversationIconUrl(); as iconUrl) {
                   <img [src]="iconUrl" [alt]="activeServer()?.name ?? ''" loading="lazy" />
                 } @else {
                   <span>{{ displayNickInitials(activeServer()?.name ?? 'KVA') }}</span>
                 }
-              </div>
+              </button>
               <div class="conversation-head__copy">
                 <p class="eyebrow">{{ isChatsMode() ? 'Личный чат' : 'Группа' }}</p>
                 <strong>{{ activeServer()?.name }}</strong>
@@ -350,39 +359,29 @@
                   <img src="/assets/Phone_connect.svg" alt="" />
                 </button>
               }
+              @if (isGroupsMode()) {
+                <button class="secondary-button conversation-head__action" type="button" (click)="openGroupMembersPanel()">
+                  Пользователи
+                </button>
+              }
               @if (isGroupsMode() && canManageActiveGroup()) {
                 <button class="secondary-button conversation-head__action" type="button" (click)="openAddGroupMemberModal()">
                   Добавить участника
                 </button>
               }
-              @if (isGroupsMode() && canEditActiveServerIcon()) {
-                <button class="secondary-button conversation-head__action" type="button" (click)="openServerIconModal()">
-                  Иконка
-                </button>
-              }
             </div>
+
+            <input
+              #serverIconInput
+              hidden
+              accept="image/png,image/jpeg"
+              type="file"
+              (change)="onServerIconSelection($event)"
+            />
           </section>
 
           @if (isGroupsMode()) {
             <section class="group-overview">
-              <div class="group-overview__members">
-                @for (member of groupMembers(); track member.userId) {
-                  <button class="group-member-pill" type="button" (click)="openMemberCall(member)">
-                    <span class="member-avatar" [class.member-avatar--online]="member.isOnline">
-                      @if (userAvatarUrl(member.userId, member.avatarUpdatedAt); as avatarUrl) {
-                        <img [src]="avatarUrl" [alt]="displayNick(member.nick)" loading="lazy" />
-                      } @else {
-                        <span>{{ displayNickInitials(member.nick) }}</span>
-                      }
-                    </span>
-                    <span class="group-member-pill__copy">
-                      <strong>{{ displayNick(member.nick) }}</strong>
-                      <small>ID: {{ formatPublicUserId(member.publicId) }}</small>
-                    </span>
-                  </button>
-                }
-              </div>
-
               @if (activeGroupVoiceChannel(); as groupVoiceChannel) {
                 <div class="group-voice-card" [class.group-voice-card--active]="connectedVoiceChannelId() === groupVoiceChannel.id">
                   <div class="group-voice-card__copy">
@@ -1332,7 +1331,7 @@
           <p class="eyebrow">Чаты</p>
           <h3>{{ conversationCreateTab() === 'direct' ? 'Новый личный чат' : 'Новая мини-группа' }}</h3>
         </div>
-        <button class="icon-button" type="button" (click)="closeCreateConversationModal()">Г—</button>
+        <button class="icon-button" type="button" (click)="closeCreateConversationModal()">×</button>
       </div>
 
       <div class="modal__body conversation-create">
@@ -1385,17 +1384,7 @@
               />
             </label>
 
-            <label class="form-field">
-              <span>Иконка группы</span>
-              <select [(ngModel)]="createConversationForm.iconAsset" name="conversation_group_icon">
-                <option value="">Без иконки</option>
-                @for (icon of serverIconOptions; track icon.asset) {
-                  <option [value]="icon.asset">{{ icon.label }}</option>
-                }
-              </select>
-            </label>
-
-            <p class="modal-note">Группа создается сразу, даже если вы пока один. Участников можно добавить потом внутри группы.</p>
+            <p class="modal-note">Группа создается сразу, даже если вы пока один. Участников можно добавить потом внутри группы, а свою иконку загрузить уже после входа.</p>
           </div>
         }
 
@@ -1592,36 +1581,42 @@
   </div>
 }
 
-@if (serverIconModalOpen()) {
-  <div class="modal-backdrop" (click)="closeServerIconModal()">
-    <section class="modal modal--wide modal--icon-picker" (click)="$event.stopPropagation()">
+@if (groupMembersModalOpen()) {
+  <div class="modal-backdrop" (click)="closeGroupMembersPanel()">
+    <section class="modal modal--wide modal--conversation-create" (click)="$event.stopPropagation()">
       <div class="modal__header">
         <div>
           <p class="eyebrow">Группа</p>
-          <h3>Выберите иконку</h3>
+          <h3>Пользователи</h3>
         </div>
-        <button class="icon-button" type="button" (click)="closeServerIconModal()">✕</button>
+        <button class="icon-button" type="button" (click)="closeGroupMembersPanel()">×</button>
       </div>
 
-      <div class="modal__body icon-picker">
-        @for (icon of serverIconOptions; track icon.asset) {
-          <button
-            class="icon-picker__option"
-            [class.icon-picker__option--active]="activeServerIconAsset() === icon.asset"
-            type="button"
-            [disabled]="serverIconSaving()"
-            (click)="selectServerIcon(icon.asset)"
-          >
-            <span class="icon-picker__preview">
-              <img [src]="icon.url" [alt]="icon.label" />
-            </span>
-            <span class="icon-picker__label">{{ icon.label }}</span>
-          </button>
-        }
+      <div class="modal__body conversation-create">
+        <div class="conversation-picker-list">
+          @for (member of groupMembers(); track member.userId) {
+            <button class="conversation-picker-row" type="button" (click)="openGroupMemberFromPanel(member)">
+              <span class="conversation-picker-row__avatar">
+                @if (userAvatarUrl(member.userId, member.avatarUpdatedAt); as avatarUrl) {
+                  <img [src]="avatarUrl" [alt]="displayNick(member.nick)" loading="lazy" />
+                } @else {
+                  <span>{{ displayNickInitials(member.nick) }}</span>
+                }
+              </span>
+              <span class="conversation-picker-row__copy">
+                <strong>{{ displayNick(member.nick) }}</strong>
+                <small>ID: {{ formatPublicUserId(member.publicId) }}</small>
+                <small>{{ member.isOnline ? 'онлайн' : 'офлайн' }}</small>
+              </span>
+            </button>
+          } @empty {
+            <div class="rail-empty">В группе пока нет участников</div>
+          }
+        </div>
       </div>
 
       <div class="modal__actions">
-        <button class="secondary-button" type="button" (click)="closeServerIconModal()">Закрыть</button>
+        <button class="secondary-button" type="button" (click)="closeGroupMembersPanel()">Закрыть</button>
       </div>
     </section>
   </div>

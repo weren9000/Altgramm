@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import re
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -46,6 +47,9 @@ from app.services.voice_signaling import voice_signaling_manager
 
 router = APIRouter(prefix="/servers", tags=["workspace"])
 
+ALLOWED_SERVER_ICON_MIME_TYPES = {"image/png", "image/jpeg"}
+MAX_SERVER_ICON_SIZE_BYTES = 2 * 1024 * 1024
+
 
 def _slugify(value: str) -> str:
     slug = re.sub(r"[\W_]+", "-", value.casefold(), flags=re.UNICODE).strip("-")
@@ -59,6 +63,7 @@ def _build_server_summary(server: Server, role: MemberRole) -> ServerSummary:
         slug=server.slug,
         description=server.description,
         icon_asset=server.icon_asset,
+        icon_updated_at=server.icon_updated_at,
         member_role=role.value,
         kind=server.kind.value,
     )
@@ -153,6 +158,14 @@ def _ensure_workspace_manageable(server: Server) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Группа не найдена")
 
 
+def _sanitize_filename(filename: str | None, fallback: str = "group-icon") -> str:
+    if not filename:
+        return fallback
+
+    sanitized = filename.replace("\\", "/").split("/")[-1].strip()
+    return sanitized or fallback
+
+
 @router.get("", response_model=list[ServerSummary])
 def list_servers(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ServerSummary]:
     servers = db.execute(
@@ -232,10 +245,74 @@ def update_server_icon(
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
+    server.icon_filename = None
+    server.icon_mime_type = None
+    server.icon_size_bytes = None
+    server.icon_content = None
+    server.icon_updated_at = None
     db.commit()
     db.refresh(server)
     publish_servers_changed_from_sync(reason="server_icon_updated")
     return _build_server_summary(server, role)
+
+
+@router.put("/{server_id}/icon-file", response_model=ServerSummary)
+async def upload_server_icon_file(
+    server_id: UUID,
+    icon: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ServerSummary:
+    server, membership = get_accessible_server(db, server_id, current_user)
+    role = _ensure_manage_permission(membership, current_user)
+
+    try:
+        content_type = (icon.content_type or "").lower()
+        if content_type not in ALLOWED_SERVER_ICON_MIME_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Поддерживаются только PNG и JPG иконки группы",
+            )
+
+        payload = await icon.read()
+        if not payload:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Файл иконки пустой")
+        if len(payload) > MAX_SERVER_ICON_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Иконка группы превышает лимит 2 МБ",
+            )
+
+        server.icon_asset = None
+        server.icon_filename = _sanitize_filename(icon.filename)
+        server.icon_mime_type = content_type
+        server.icon_size_bytes = len(payload)
+        server.icon_content = payload
+        server.icon_updated_at = datetime.now(timezone.utc)
+    finally:
+        await icon.close()
+
+    db.commit()
+    db.refresh(server)
+    publish_servers_changed_from_sync(reason="server_icon_uploaded")
+    return _build_server_summary(server, role)
+
+
+@router.get("/{server_id}/icon-file")
+def read_server_icon_file(server_id: UUID, db: Session = Depends(get_db)) -> Response:
+    server = db.get(Server, server_id)
+    if server is None or server.icon_content is None or server.icon_mime_type is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Иконка группы не найдена")
+
+    filename = server.icon_filename or "group-icon"
+    return Response(
+        content=server.icon_content,
+        media_type=server.icon_mime_type,
+        headers={
+            "Cache-Control": "public, max-age=300",
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}",
+        },
+    )
 
 
 @router.get("/{server_id}/channels", response_model=list[ChannelSummary])

@@ -115,6 +115,11 @@ class Server(TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     icon_asset: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    icon_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    icon_mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    icon_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    icon_content: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
+    icon_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     kind: Mapped[ServerKind] = mapped_column(
         Enum(ServerKind, name="serverkind", values_callable=enum_values),
         default=ServerKind.WORKSPACE,

@@ -14,6 +14,7 @@ export interface ConversationSummary {
   title: string;
   subtitle: string | null;
   icon_asset: string | null;
+  icon_updated_at: string | null;
   member_role: string;
   primary_channel_id: string;
   members: ConversationMemberPreview[];
@@ -36,5 +37,4 @@ export interface CreateDirectConversationRequest {
 export interface CreateGroupConversationRequest {
   name: string;
   member_ids: string[];
-  icon_asset: string | null;
 }
