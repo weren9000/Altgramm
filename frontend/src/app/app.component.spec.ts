@@ -21,7 +21,7 @@ describe('AppComponent', () => {
           useValue: {
             getHealth: () =>
               of({
-                service: 'Tescord API',
+                service: 'Altgramm API',
                 status: 'ok',
                 environment: 'test',
                 database: 'online'

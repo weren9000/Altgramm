@@ -61,14 +61,14 @@ def ensure_development_seed_data() -> None:
             server = Server(
                 name=settings.demo_server_name,
                 slug=server_slug,
-                description="Базовая группа для первого MVP Tescord",
+                description="Базовая группа для первого MVP Altgramm",
                 owner_id=user.id,
             )
             db.add(server)
             db.flush()
         else:
             server.owner_id = user.id
-            server.description = "Базовая группа для первого MVP Tescord"
+            server.description = "Базовая группа для первого MVP Altgramm"
 
         membership = db.execute(
             select(ServerMember).where(
@@ -158,7 +158,7 @@ def ensure_development_seed_data() -> None:
                             channel_id=announcements_channel.id,
                             author_id=user.id,
                             content=(
-                                f"Запись {index}. Tescord уже умеет авторизацию, группы, каналы и голос. "
+                                f"Запись {index}. Altgramm уже умеет авторизацию, группы, каналы и голос. "
                                 "Следующий шаг для MVP — настоящий текстовый чат с вложениями и ленивой загрузкой истории."
                             ),
                             type=MessageType.TEXT,

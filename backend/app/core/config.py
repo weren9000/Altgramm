@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "Tescord API"
+    app_name: str = "Altgramm API"
     api_prefix: str = "/api"
     environment: Literal["development", "staging", "production"] = "development"
     debug: bool = True
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     demo_character_name: str = "Архимаг Кельн"
     demo_password: str = "Vfrfhjys9000"
     demo_is_admin: bool = True
-    demo_server_name: str = "Forgehold Collective"
+    demo_server_name: str = "Altgramm"
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,6 +1,6 @@
-# Tescord Backend
+# Altgramm Backend
 
-FastAPI backend for Tescord.
+FastAPI backend for Altgramm.
 
 ## Local Setup
 

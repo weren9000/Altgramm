@@ -965,7 +965,7 @@ def test_can_send_message_with_attachment_and_download_it() -> None:
                 headers={"Authorization": f"Bearer {token}"},
                 data={"content": "Сообщение с вложением"},
                 files=[
-                    ("files", ("brief.txt", b"Tescord attachment payload", "text/plain")),
+                    ("files", ("brief.txt", b"Altgramm attachment payload", "text/plain")),
                 ],
             )
             assert create_message_response.status_code == 201
@@ -983,7 +983,7 @@ def test_can_send_message_with_attachment_and_download_it() -> None:
 
     assert download_response.status_code == 200
     assert download_response.headers["content-type"].startswith("text/plain")
-    assert download_response.content == b"Tescord attachment payload"
+    assert download_response.content == b"Altgramm attachment payload"
 
 
 def test_can_add_and_remove_message_reactions() -> None:

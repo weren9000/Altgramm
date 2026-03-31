@@ -1,4 +1,4 @@
-"""Bootstrap Tescord schema.
+"""Bootstrap Altgramm schema.
 
 Revision ID: 20260317_0001
 Revises:

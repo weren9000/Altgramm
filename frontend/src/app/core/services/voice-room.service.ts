@@ -563,7 +563,7 @@ export class VoiceRoomService {
     }
 
     if (typeof window !== 'undefined' && !window.isSecureContext) {
-      throw new Error('На телефоне микрофон и голосовой канал работают только через HTTPS или localhost. Откройте Tescord по защищенному домену.');
+      throw new Error('На телефоне микрофон и голосовой канал работают только через HTTPS или localhost. Откройте Altgramm по защищенному домену.');
     }
 
     const settings = this.settings();

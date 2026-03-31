@@ -1,4 +1,4 @@
-# Деплой Tescord на Ubuntu 24
+# Деплой Altgramm на Ubuntu 24
 
 Ниже два рабочих варианта:
 - ручной деплой
@@ -79,7 +79,7 @@ cp .env.production.example .env
 Пример production `backend/.env`:
 
 ```env
-TESCORD_APP_NAME=Tescord API
+TESCORD_APP_NAME=Altgramm API
 TESCORD_API_PREFIX=/api
 TESCORD_ENVIRONMENT=production
 TESCORD_DEBUG=false
@@ -95,7 +95,7 @@ TESCORD_DEMO_FULL_NAME=Верен Чебыкин
 TESCORD_DEMO_CHARACTER_NAME=Архимаг Кельн
 TESCORD_DEMO_PASSWORD=СИЛЬНЫЙ_ПАРОЛЬ_АДМИНА
 TESCORD_DEMO_IS_ADMIN=true
-TESCORD_DEMO_SERVER_NAME=Tescord
+TESCORD_DEMO_SERVER_NAME=Altgramm
 ```
 
 Прогнать миграции:
@@ -151,7 +151,7 @@ window.__TESCORD_RUNTIME_CONFIG__ = {
 
 ```ini
 [Unit]
-Description=Tescord FastAPI backend
+Description=Altgramm FastAPI backend
 After=network.target postgresql.service
 Wants=postgresql.service
 

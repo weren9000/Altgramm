@@ -7,7 +7,7 @@ function normalizeBaseUrl(value: string | undefined): string | null {
   return trimmed || null;
 }
 
-function getRuntimeConfig(): TescordRuntimeConfig {
+function getRuntimeConfig(): AltgrammRuntimeConfig {
   if (typeof window === 'undefined') {
     return {};
   }

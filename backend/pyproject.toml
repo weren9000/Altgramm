@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "tescord-backend"
 version = "0.1.0"
-description = "FastAPI backend for Tescord"
+description = "FastAPI backend for Altgramm"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

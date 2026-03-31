@@ -85,7 +85,7 @@ else
 fi
 
 cat > "${BACKEND_ENV_PATH}" <<EOF
-TESCORD_APP_NAME=Tescord API
+TESCORD_APP_NAME=Altgramm API
 TESCORD_API_PREFIX=/api
 TESCORD_ENVIRONMENT=production
 TESCORD_DEBUG=false
@@ -101,7 +101,7 @@ TESCORD_DEMO_FULL_NAME=Верен Чебыкин
 TESCORD_DEMO_CHARACTER_NAME=Архимаг Кельн
 TESCORD_DEMO_PASSWORD=${DEMO_PASSWORD}
 TESCORD_DEMO_IS_ADMIN=true
-TESCORD_DEMO_SERVER_NAME=Tescord
+TESCORD_DEMO_SERVER_NAME=Altgramm
 EOF
 
 chown tescord:tescord "${BACKEND_ENV_PATH}"
@@ -111,7 +111,7 @@ su -s /bin/bash -c "cd '${APP_DIR}/backend' && ./.venv/bin/python -m alembic upg
 
 cat > /etc/systemd/system/tescord-backend.service <<EOF
 [Unit]
-Description=Tescord FastAPI backend
+Description=Altgramm FastAPI backend
 After=network.target postgresql.service
 Wants=postgresql.service
 

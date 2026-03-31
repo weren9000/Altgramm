@@ -1,6 +1,6 @@
-# Tescord
+# Altgramm
 
-Tescord - это Discord-подобное приложение для небольших сообществ на `FastAPI`, `Angular`, `PostgreSQL` и `WebRTC`.
+Altgramm - это Discord-подобное приложение для небольших сообществ на `FastAPI`, `Angular`, `PostgreSQL` и `WebRTC`.
 
 Сейчас в проекте уже есть:
 - регистрация и вход

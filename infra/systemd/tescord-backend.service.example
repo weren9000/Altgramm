@@ -1,5 +1,5 @@
 [Unit]
-Description=Tescord FastAPI backend
+Description=Altgramm FastAPI backend
 After=network.target postgresql.service
 Wants=postgresql.service
 

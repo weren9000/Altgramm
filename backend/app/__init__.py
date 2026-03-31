@@ -1,1 +1,1 @@
-"""Tescord backend package."""
+"""Altgramm backend package."""

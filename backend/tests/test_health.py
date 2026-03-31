@@ -9,6 +9,6 @@ def test_health_endpoint_returns_expected_shape() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["service"] == "Tescord API"
+    assert payload["service"] == "Altgramm API"
     assert payload["status"] in {"ok", "degraded"}
     assert payload["database"] in {"online", "offline"}
