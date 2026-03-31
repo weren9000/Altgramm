@@ -199,7 +199,7 @@
           </button>
           <button class="side-drawer__action" type="button" (click)="openAddUserShortcut()">
             <span>+</span>
-            <span>Добавить пользователя</span>
+            <span>Личка по ID</span>
           </button>
           @if (isAdmin()) {
             <button class="side-drawer__action" type="button" (click)="closeSideMenu(); openVoiceAdminPanel()">
@@ -252,8 +252,8 @@
           <button
             class="conversation-sidebar__add"
             type="button"
-            [attr.title]="isChatsMode() ? 'Добавить пользователя' : 'Создать группу'"
-            [attr.aria-label]="isChatsMode() ? 'Добавить пользователя' : 'Создать группу'"
+            [attr.title]="isChatsMode() ? 'Открыть личку по ID' : 'Создать группу'"
+            [attr.aria-label]="isChatsMode() ? 'Открыть личку по ID' : 'Создать группу'"
             (click)="isChatsMode() ? openAddUserShortcut() : openCreateGroupShortcut()"
           >
             +
@@ -1358,42 +1358,19 @@
         @if (conversationCreateTab() === 'direct') {
           <div class="conversation-create__section">
             <label class="form-field">
-              <span>Поиск по нику, почте или ID</span>
+              <span>Полный ID пользователя</span>
               <input
                 [ngModel]="directDirectoryQuery()"
                 (ngModelChange)="directDirectoryQuery.set($event); createConversationForm.directUserId = ''"
                 name="conversation_direct_query"
-                maxlength="120"
-                placeholder="Введите ник, почту или пятизначный ID"
+                maxlength="5"
+                inputmode="numeric"
+                placeholder="Например, 12345"
                 type="text"
               />
             </label>
 
-            <p class="modal-note">Можно выбрать участника из списка или сразу ввести его пятизначный ID.</p>
-
-            <div class="conversation-picker-list">
-              @for (user of personalDirectoryCandidates(); track user.user_id) {
-                <button
-                  class="conversation-picker-row"
-                  [class.conversation-picker-row--active]="createConversationForm.directUserId === user.user_id"
-                  type="button"
-                  (click)="createConversationForm.directUserId = user.user_id"
-                >
-                  <span class="conversation-picker-row__avatar">
-                    @if (userAvatarUrl(user.user_id, user.avatar_updated_at); as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="displayNick(user.nick)" loading="lazy" />
-                    } @else {
-                      <span>{{ displayNickInitials(user.nick) }}</span>
-                    }
-                  </span>
-                  <span class="conversation-picker-row__copy">
-                    <strong>{{ displayNick(user.nick) }}</strong>
-                    <small>ID: {{ formatPublicUserId(user.public_id) }}</small>
-                    <small>&#64;{{ user.nick }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}</small>
-                  </span>
-                </button>
-              }
-            </div>
+            <p class="modal-note">Личный чат открывается только по полному пятизначному ID. Список пользователей здесь не показывается.</p>
           </div>
         } @else {
           <div class="conversation-create__section">
@@ -1418,30 +1395,7 @@
               </select>
             </label>
 
-            <p class="modal-note">Группу можно создать одному и потом добавить людей. Либо сразу выбрать до 9 участников.</p>
-
-            <div class="conversation-picker-list">
-              @for (user of createConversationAvailableUsers(); track user.user_id) {
-                <label class="conversation-picker-row conversation-picker-row--check">
-                  <input
-                    type="checkbox"
-                    [checked]="createConversationGroupMemberIds().includes(user.user_id)"
-                    (change)="toggleCreateConversationMember(user.user_id, $any($event.target).checked)"
-                  />
-                  <span class="conversation-picker-row__avatar">
-                    @if (userAvatarUrl(user.user_id, user.avatar_updated_at); as avatarUrl) {
-                      <img [src]="avatarUrl" [alt]="displayNick(user.nick)" loading="lazy" />
-                    } @else {
-                      <span>{{ displayNickInitials(user.nick) }}</span>
-                    }
-                  </span>
-                  <span class="conversation-picker-row__copy">
-                    <strong>{{ displayNick(user.nick) }}</strong>
-                    <small>&#64;{{ user.nick }} · {{ user.is_online ? 'онлайн' : 'офлайн' }}</small>
-                  </span>
-                </label>
-              }
-            </div>
+            <p class="modal-note">Группа создается сразу, даже если вы пока один. Участников можно добавить потом внутри группы.</p>
           </div>
         }
 

@@ -813,14 +813,10 @@ export class AppComponent {
   });
 
   readonly canEditActiveServerIcon = computed(() => this.canManageActiveGroup() && !this.isCompactVoiceWorkspaceViewport());
-  readonly canCreateConversationGroup = computed(() => {
-    const selectedCount = this.createConversationGroupMemberIds().length;
-    return (
-      this.createConversationForm.name.trim().length >= 2
-      && selectedCount <= 9
-      && !this.createConversationLoading()
-    );
-  });
+  readonly canCreateConversationGroup = computed(() =>
+    this.createConversationForm.name.trim().length >= 2
+    && !this.createConversationLoading()
+  );
   readonly canCreateDirectConversation = computed(() =>
     this.resolveUserLookupPayload(this.createConversationForm.directUserId, this.directDirectoryQuery()) !== null
     && !this.createConversationLoading()
@@ -2319,8 +2315,7 @@ export class AppComponent {
   }
 
   openCreateConversationModal(tab: ConversationCreateTab = 'direct'): void {
-    const token = this.session()?.access_token;
-    if (!token) {
+    if (!this.session()?.access_token) {
       return;
     }
 
@@ -2334,7 +2329,6 @@ export class AppComponent {
     this.createConversationModalOpen.set(true);
     this.managementError.set(null);
     this.managementSuccess.set(null);
-    void this.loadConversationDirectory(token);
   }
 
   closeCreateConversationModal(): void {
