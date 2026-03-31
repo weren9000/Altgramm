@@ -126,7 +126,7 @@ Frontend будет доступен по адресу:
 Если `TESCORD_SEED_DEMO_DATA=true`, backend автоматически создаст demo-данные.
 
 По умолчанию:
-- логин: `weren9000`
+- логин: `weren9000@kva-chat.local`
 - пароль: `Vfrfhjys9000`
 
 ## Полезные команды

@@ -39,7 +39,7 @@ def login_admin_user(client: TestClient) -> str:
     response = client.post(
         "/api/auth/login",
         json={
-            "email": "weren9000",
+            "email": "weren9000@kva-chat.local",
             "password": "Vfrfhjys9000",
         },
     )
@@ -212,7 +212,7 @@ def test_current_user_endpoint_returns_admin_user() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["email"] == "weren9000"
+    assert payload["email"] == "weren9000@kva-chat.local"
     assert payload["nick"] == "weren9000"
     assert payload["is_admin"] is True
 

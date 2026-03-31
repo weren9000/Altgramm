@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     secret_key: str = "tescord-dev-secret-key"
     access_token_expire_minutes: int = 60 * 24 * 7
     seed_demo_data: bool = True
-    demo_login: str = "weren9000"
+    demo_login: str = "weren9000@kva-chat.local"
     demo_nick: str = "weren9000"
     demo_password: str = "Vfrfhjys9000"
     demo_is_admin: bool = True

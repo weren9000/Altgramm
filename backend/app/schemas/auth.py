@@ -1,9 +1,22 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+EMAIL_PATTERN = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$"
+)
+
+
+def _normalize_email(value: str) -> str:
+    normalized = value.strip().lower()
+    if not EMAIL_PATTERN.fullmatch(normalized):
+        raise ValueError("Нужно указать корректную почту")
+    return normalized
 
 
 class RegisterRequest(BaseModel):
@@ -12,10 +25,20 @@ class RegisterRequest(BaseModel):
     password_confirmation: str = Field(min_length=8, max_length=128)
     nick: str = Field(min_length=2, max_length=32)
 
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return _normalize_email(value)
+
 
 class LoginRequest(BaseModel):
     email: str = Field(min_length=5, max_length=320)
     password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return _normalize_email(value)
 
 
 class AuthUserResponse(BaseModel):
