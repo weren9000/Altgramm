@@ -1061,3 +1061,84 @@ def test_can_add_praying_cat_message_reaction() -> None:
     add_snapshot = add_reaction_response.json()
     assert add_snapshot["message_id"] == message_id
     assert add_snapshot["reactions"] == [{"code": "praying_cat", "count": 1, "reacted": True}]
+
+
+def test_can_reply_to_existing_message() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        token = login_admin_user(client)
+        group, channel = create_temp_text_channel(client, token, suffix)
+
+        try:
+            root_message_response = client.post(
+                f"/api/channels/{channel['id']}/messages",
+                headers={"Authorization": f"Bearer {token}"},
+                data={"content": "Исходное сообщение"},
+            )
+            assert root_message_response.status_code == 201
+            root_message = root_message_response.json()
+
+            reply_message_response = client.post(
+                f"/api/channels/{channel['id']}/messages",
+                headers={"Authorization": f"Bearer {token}"},
+                data={
+                    "content": "Ответ на сообщение",
+                    "reply_to_message_id": root_message["id"],
+                },
+            )
+            assert reply_message_response.status_code == 201
+
+            list_response = client.get(
+                f"/api/channels/{channel['id']}/messages?limit=10",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            delete_server(group["id"])
+
+    assert list_response.status_code == 200
+    reply_message = next(message for message in list_response.json()["items"] if message["content"] == "Ответ на сообщение")
+    assert reply_message["reply_to"]["id"] == root_message["id"]
+    assert reply_message["reply_to"]["content"] == "Исходное сообщение"
+
+
+def test_message_read_state_updates_message_and_pushes_event() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        admin_token = login_admin_user(client)
+        regular_token, payload = register_regular_user(client)
+        group, channel = create_temp_text_channel(client, admin_token, suffix)
+
+        try:
+            message_response = client.post(
+                f"/api/channels/{channel['id']}/messages",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                data={"content": "Сообщение для прочтения"},
+            )
+            assert message_response.status_code == 201
+            message = message_response.json()
+
+            with connect_app_events_websocket(client, admin_token, group["id"]) as websocket:
+                mark_read_response = client.post(
+                    f"/api/channels/{channel['id']}/read",
+                    headers={"Authorization": f"Bearer {regular_token}"},
+                    json={"last_message_id": message["id"]},
+                )
+                assert mark_read_response.status_code == 200
+                read_event = websocket.receive_json()
+
+            list_response = client.get(
+                f"/api/channels/{channel['id']}/messages?limit=10",
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+        finally:
+            delete_server(group["id"])
+            delete_user(payload["login"])
+
+    assert read_event["type"] == "message_read_updated"
+    assert read_event["channel_id"] == channel["id"]
+    assert read_event["state"]["last_read_message_id"] == message["id"]
+    listed_message = next(item for item in list_response.json()["items"] if item["id"] == message["id"])
+    assert len(listed_message["read_by"]) == 1
+    assert listed_message["read_by"][0]["id"] == mark_read_response.json()["user_id"]

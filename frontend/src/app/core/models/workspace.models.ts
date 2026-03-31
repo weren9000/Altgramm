@@ -77,6 +77,13 @@ export interface WorkspaceMessageAuthor {
   avatar_updated_at: string | null;
 }
 
+export interface WorkspaceMessageReadUser {
+  id: string;
+  nick: string;
+  character_name: string | null;
+  avatar_updated_at: string | null;
+}
+
 export interface WorkspaceMessageAttachment {
   id: string;
   filename: string;
@@ -104,6 +111,14 @@ export interface WorkspaceMessageReaction {
   reacted: boolean;
 }
 
+export interface WorkspaceMessageReply {
+  id: string;
+  content: string;
+  created_at: string;
+  author: WorkspaceMessageAuthor;
+  attachments_count: number;
+}
+
 export interface WorkspaceMessage {
   id: string;
   channel_id: string;
@@ -112,8 +127,10 @@ export interface WorkspaceMessage {
   created_at: string;
   edited_at: string | null;
   author: WorkspaceMessageAuthor;
+  reply_to: WorkspaceMessageReply | null;
   attachments: WorkspaceMessageAttachment[];
   reactions: WorkspaceMessageReaction[];
+  read_by: WorkspaceMessageReadUser[];
 }
 
 export interface WorkspaceMessagePage {
@@ -126,6 +143,13 @@ export interface WorkspaceMessageReactionsSnapshot {
   message_id: string;
   channel_id: string;
   reactions: WorkspaceMessageReaction[];
+}
+
+export interface WorkspaceChannelReadState {
+  channel_id: string;
+  user_id: string;
+  last_read_message_id: string | null;
+  last_read_at: string;
 }
 
 export interface VoiceAdminChannel {

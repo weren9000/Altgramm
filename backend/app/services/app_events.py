@@ -224,6 +224,19 @@ def build_message_reactions_updated_event(
     }
 
 
+def build_message_read_updated_event(
+    server_id: UUID | str,
+    channel_id: UUID | str,
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "type": "message_read_updated",
+        "server_id": _normalize_user_id(server_id),
+        "channel_id": _normalize_user_id(channel_id),
+        "state": state,
+    }
+
+
 def build_servers_changed_event(*, reason: str) -> dict[str, Any]:
     return {
         "type": "servers_changed",
@@ -320,6 +333,17 @@ async def publish_message_reactions_updated(
     await app_event_manager.send_to_server(
         server_id,
         build_message_reactions_updated_event(server_id, channel_id, snapshot),
+    )
+
+
+async def publish_message_read_updated(
+    server_id: UUID | str,
+    channel_id: UUID | str,
+    state: dict[str, Any],
+) -> None:
+    await app_event_manager.send_to_server(
+        server_id,
+        build_message_read_updated_event(server_id, channel_id, state),
     )
 
 

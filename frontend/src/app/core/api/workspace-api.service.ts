@@ -14,6 +14,7 @@ import {
   VoiceJoinRequestSummary,
   WorkspaceChannel,
   WorkspaceMessage,
+  WorkspaceChannelReadState,
   WorkspaceMessageReactionCode,
   WorkspaceMessageReactionsSnapshot,
   WorkspaceMessagePage,
@@ -224,10 +225,14 @@ export class WorkspaceApiService {
     payload: {
       content: string;
       files: File[];
+      replyToMessageId?: string | null;
     }
   ): Observable<WorkspaceMessage> {
     const formData = new FormData();
     formData.append('content', payload.content);
+    if (payload.replyToMessageId) {
+      formData.append('reply_to_message_id', payload.replyToMessageId);
+    }
     for (const file of payload.files) {
       formData.append('files', file, file.name);
     }
@@ -235,6 +240,16 @@ export class WorkspaceApiService {
     return this.http.post<WorkspaceMessage>(`${API_BASE_URL}/api/channels/${channelId}/messages`, formData, {
       headers: this.buildAuthHeaders(token)
     });
+  }
+
+  markChannelRead(token: string, channelId: string, lastMessageId?: string | null): Observable<WorkspaceChannelReadState> {
+    return this.http.post<WorkspaceChannelReadState>(
+      `${API_BASE_URL}/api/channels/${channelId}/read`,
+      { last_message_id: lastMessageId ?? null },
+      {
+        headers: this.buildAuthHeaders(token)
+      }
+    );
   }
 
   addMessageReaction(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from hashlib import sha256
 from urllib.parse import quote
 from uuid import UUID
@@ -10,17 +11,35 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.dependencies.auth import get_current_user
-from app.db.models import Attachment, Channel, ChannelType, Message, MessageReaction, MessageReactionKind, MessageType, User
+from app.db.models import (
+    Attachment,
+    Channel,
+    ChannelReadState,
+    ChannelType,
+    Message,
+    MessageReaction,
+    MessageReactionKind,
+    MessageType,
+    User,
+)
 from app.db.session import get_db
 from app.schemas.workspace import (
     ChannelMessageSummary,
     ChannelMessagesPage,
-    MessageReactionSummary,
-    MessageReactionsSnapshot,
+    ChannelReadStateSummary,
+    MarkChannelReadRequest,
     MessageAttachmentSummary,
     MessageAuthorSummary,
+    MessageReactionSummary,
+    MessageReadUserSummary,
+    MessageReactionsSnapshot,
+    MessageReplySummary,
 )
-from app.services.app_events import publish_message_created, publish_message_reactions_updated
+from app.services.app_events import (
+    publish_message_created,
+    publish_message_read_updated,
+    publish_message_reactions_updated,
+)
 from app.services.voice_access import can_view_voice_channel, get_voice_channel_access
 
 router = APIRouter(tags=["messages"])
@@ -54,6 +73,15 @@ def _build_author_summary(user: User) -> MessageAuthorSummary:
     )
 
 
+def _build_read_user_summary(user: User) -> MessageReadUserSummary:
+    return MessageReadUserSummary(
+        id=user.id,
+        nick=user.username,
+        character_name=user.bio,
+        avatar_updated_at=user.avatar_updated_at,
+    )
+
+
 def _build_attachment_summary(attachment: Attachment) -> MessageAttachmentSummary:
     return MessageAttachmentSummary(
         id=attachment.id,
@@ -61,6 +89,19 @@ def _build_attachment_summary(attachment: Attachment) -> MessageAttachmentSummar
         mime_type=attachment.mime_type,
         size_bytes=attachment.size_bytes,
         created_at=attachment.created_at,
+    )
+
+
+def _build_reply_summary(message: Message | None) -> MessageReplySummary | None:
+    if message is None:
+        return None
+
+    return MessageReplySummary(
+        id=message.id,
+        content=message.content,
+        created_at=message.created_at,
+        author=_build_author_summary(message.author),
+        attachments_count=len(message.attachments),
     )
 
 
@@ -86,6 +127,16 @@ def _build_reaction_summaries(message: Message, current_user_id: UUID) -> list[M
 
 
 def _build_message_summary(message: Message, current_user_id: UUID) -> ChannelMessageSummary:
+    read_by = [
+        _build_read_user_summary(read_state.user)
+        for read_state in sorted(
+            message.read_states,
+            key=lambda item: item.last_read_at,
+            reverse=True,
+        )
+        if read_state.user_id != message.author_id
+    ]
+
     return ChannelMessageSummary(
         id=message.id,
         channel_id=message.channel_id,
@@ -94,8 +145,10 @@ def _build_message_summary(message: Message, current_user_id: UUID) -> ChannelMe
         created_at=message.created_at,
         edited_at=message.edited_at,
         author=_build_author_summary(message.author),
+        reply_to=_build_reply_summary(message.reply_to),
         attachments=[_build_attachment_summary(attachment) for attachment in message.attachments],
         reactions=_build_reaction_summaries(message, current_user_id),
+        read_by=read_by,
     )
 
 
@@ -124,12 +177,33 @@ def _build_message_reactions_event_snapshot(message: Message) -> MessageReaction
     )
 
 
+def _build_channel_read_state_summary(read_state: ChannelReadState) -> ChannelReadStateSummary:
+    return ChannelReadStateSummary(
+        channel_id=read_state.channel_id,
+        user_id=read_state.user_id,
+        last_read_message_id=read_state.last_read_message_id,
+        last_read_at=read_state.last_read_at,
+    )
+
+
+def _build_channel_read_event_payload(read_state: ChannelReadState, user: User) -> dict[str, str | None]:
+    payload = _build_channel_read_state_summary(read_state).model_dump(mode="json")
+    payload["nick"] = user.username
+    payload["character_name"] = user.bio
+    payload["avatar_updated_at"] = user.avatar_updated_at
+    return payload
+
+
 def _sanitize_filename(filename: str | None) -> str:
     if not filename:
         return "file"
 
     sanitized = filename.replace("\\", "/").split("/")[-1].strip()
     return sanitized or "file"
+
+
+def _message_sort_key(message: Message) -> tuple[datetime, str]:
+    return message.created_at.astimezone(timezone.utc), str(message.id)
 
 
 def _get_accessible_message_channel(db: Session, channel_id: UUID, current_user: User) -> Channel:
@@ -151,16 +225,21 @@ def _get_accessible_message_channel(db: Session, channel_id: UUID, current_user:
     return channel
 
 
+def _message_load_options():
+    return (
+        joinedload(Message.author),
+        joinedload(Message.channel),
+        joinedload(Message.reply_to).joinedload(Message.author),
+        joinedload(Message.reply_to).selectinload(Message.attachments),
+        selectinload(Message.attachments),
+        selectinload(Message.reactions),
+        selectinload(Message.read_states).joinedload(ChannelReadState.user),
+    )
+
+
 def _load_message(db: Session, message_id: UUID) -> Message | None:
     return db.execute(
-        select(Message)
-        .where(Message.id == message_id)
-        .options(
-            joinedload(Message.author),
-            joinedload(Message.channel),
-            selectinload(Message.attachments),
-            selectinload(Message.reactions),
-        )
+        select(Message).where(Message.id == message_id).options(*_message_load_options())
     ).unique().scalar_one_or_none()
 
 
@@ -180,6 +259,25 @@ def _parse_message_reaction_kind(reaction_code: str) -> MessageReactionKind:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неизвестная реакция") from exc
 
 
+def _resolve_target_read_message(
+    db: Session,
+    channel: Channel,
+    last_message_id: UUID | None,
+) -> Message | None:
+    if last_message_id is not None:
+        target_message = db.get(Message, last_message_id)
+        if target_message is None or target_message.channel_id != channel.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сообщение для отметки прочтения не найдено")
+        return target_message
+
+    return db.execute(
+        select(Message)
+        .where(Message.channel_id == channel.id)
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
 @router.get("/channels/{channel_id}/messages", response_model=ChannelMessagesPage)
 def list_channel_messages(
     channel_id: UUID,
@@ -193,7 +291,7 @@ def list_channel_messages(
     statement = (
         select(Message)
         .where(Message.channel_id == channel.id)
-        .options(joinedload(Message.author), selectinload(Message.attachments))
+        .options(*_message_load_options())
         .order_by(Message.created_at.desc(), Message.id.desc())
     )
 
@@ -225,6 +323,7 @@ def list_channel_messages(
 async def create_channel_message(
     channel_id: UUID,
     content: str = Form(default=""),
+    reply_to_message_id: UUID | None = Form(default=None),
     files: list[UploadFile] | None = File(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -239,9 +338,16 @@ async def create_channel_message(
             detail="Нужно отправить текст сообщения или хотя бы один файл",
         )
 
+    reply_to_message: Message | None = None
+    if reply_to_message_id is not None:
+        reply_to_message = db.get(Message, reply_to_message_id)
+        if reply_to_message is None or reply_to_message.channel_id != channel.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сообщение для ответа не найдено")
+
     message = Message(
         channel_id=channel.id,
         author_id=current_user.id,
+        reply_to_message_id=reply_to_message.id if reply_to_message else None,
         content=normalized_content,
         type=MessageType.TEXT,
     )
@@ -279,6 +385,67 @@ async def create_channel_message(
     message_summary = _build_message_summary(created_message, current_user.id)
     await publish_message_created(channel.server_id, message_summary.model_dump(mode="json"))
     return message_summary
+
+
+@router.post("/channels/{channel_id}/read", response_model=ChannelReadStateSummary)
+async def mark_channel_read(
+    channel_id: UUID,
+    payload: MarkChannelReadRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChannelReadStateSummary:
+    channel = _get_accessible_message_channel(db, channel_id, current_user)
+    target_message = _resolve_target_read_message(db, channel, payload.last_message_id)
+
+    read_state = db.execute(
+        select(ChannelReadState).where(
+            ChannelReadState.channel_id == channel.id,
+            ChannelReadState.user_id == current_user.id,
+        )
+    ).scalar_one_or_none()
+
+    should_publish = False
+    now = datetime.now(timezone.utc)
+
+    if read_state is None:
+        read_state = ChannelReadState(
+            channel_id=channel.id,
+            user_id=current_user.id,
+            last_read_message_id=target_message.id if target_message else None,
+            last_read_at=now,
+        )
+        db.add(read_state)
+        should_publish = target_message is not None
+    else:
+        existing_message = read_state.last_read_message
+        next_message = target_message
+
+        if next_message is not None and (
+            existing_message is None or _message_sort_key(next_message) >= _message_sort_key(existing_message)
+        ):
+            if read_state.last_read_message_id != next_message.id:
+                read_state.last_read_message_id = next_message.id
+                should_publish = True
+            read_state.last_read_at = now
+        elif existing_message is None and next_message is None:
+            read_state.last_read_at = now
+
+    db.commit()
+
+    refreshed_state = db.execute(
+        select(ChannelReadState)
+        .where(ChannelReadState.channel_id == channel.id, ChannelReadState.user_id == current_user.id)
+        .options(joinedload(ChannelReadState.user), joinedload(ChannelReadState.last_read_message))
+    ).scalar_one()
+
+    if should_publish:
+        await publish_message_read_updated(
+            channel.server_id,
+            channel.id,
+            _build_channel_read_event_payload(refreshed_state, current_user),
+        )
+
+    return _build_channel_read_state_summary(refreshed_state)
 
 
 @router.put("/messages/{message_id}/reactions/{reaction_code}", response_model=MessageReactionsSnapshot)

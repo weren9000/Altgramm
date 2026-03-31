@@ -1,5 +1,6 @@
 import {
   WorkspaceChannel,
+  WorkspaceChannelReadState,
   WorkspaceMember,
   WorkspaceMessage,
   VoiceJoinRequestSummary,
@@ -39,6 +40,17 @@ export interface AppMessageReactionsUpdatedEvent {
   server_id: string;
   channel_id: string;
   snapshot: WorkspaceMessageReactionsSnapshot;
+}
+
+export interface AppMessageReadUpdatedEvent {
+  type: 'message_read_updated';
+  server_id: string;
+  channel_id: string;
+  state: WorkspaceChannelReadState & {
+    nick: string;
+    character_name: string | null;
+    avatar_updated_at: string | null;
+  };
 }
 
 export interface AppChannelsUpdatedEvent {
@@ -88,6 +100,7 @@ export type AppEventsMessage =
   | AppPresenceUpdatedEvent
   | AppMessageCreatedEvent
   | AppMessageReactionsUpdatedEvent
+  | AppMessageReadUpdatedEvent
   | AppChannelsUpdatedEvent
   | AppMembersUpdatedEvent
   | AppVoicePresenceUpdatedEvent

@@ -79,6 +79,13 @@ class MessageAuthorSummary(BaseModel):
     avatar_updated_at: datetime | None
 
 
+class MessageReadUserSummary(BaseModel):
+    id: UUID
+    nick: str
+    character_name: str | None
+    avatar_updated_at: datetime | None
+
+
 class MessageAttachmentSummary(BaseModel):
     id: UUID
     filename: str
@@ -93,6 +100,14 @@ class MessageReactionSummary(BaseModel):
     reacted: bool
 
 
+class MessageReplySummary(BaseModel):
+    id: UUID
+    content: str
+    created_at: datetime
+    author: MessageAuthorSummary
+    attachments_count: int
+
+
 class ChannelMessageSummary(BaseModel):
     id: UUID
     channel_id: UUID
@@ -101,8 +116,10 @@ class ChannelMessageSummary(BaseModel):
     created_at: datetime
     edited_at: datetime | None
     author: MessageAuthorSummary
+    reply_to: MessageReplySummary | None = None
     attachments: list[MessageAttachmentSummary]
     reactions: list[MessageReactionSummary]
+    read_by: list[MessageReadUserSummary] = Field(default_factory=list)
 
 
 class MessageReactionsSnapshot(BaseModel):
@@ -115,3 +132,14 @@ class ChannelMessagesPage(BaseModel):
     items: list[ChannelMessageSummary]
     has_more: bool
     next_before: UUID | None
+
+
+class MarkChannelReadRequest(BaseModel):
+    last_message_id: UUID | None = None
+
+
+class ChannelReadStateSummary(BaseModel):
+    channel_id: UUID
+    user_id: UUID
+    last_read_message_id: UUID | None
+    last_read_at: datetime

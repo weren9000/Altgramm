@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { EMPTY, Subject, catchError, exhaustMap, finalize, forkJoin, mergeMap, tap } from 'rxjs';
+import { EMPTY, Subject, catchError, exhaustMap, finalize, forkJoin, mergeMap, switchMap, tap } from 'rxjs';
 
 import { AuthApiService } from './core/api/auth-api.service';
 import { API_BASE_URL } from './core/api/api-base';
@@ -13,6 +13,7 @@ import {
   AppEventsMessage,
   AppChannelsUpdatedEvent,
   AppMessageCreatedEvent,
+  AppMessageReadUpdatedEvent,
   AppMessageReactionsUpdatedEvent,
   AppMembersUpdatedEvent,
   AppPresenceUpdatedEvent,
@@ -37,6 +38,7 @@ import {
   WorkspaceMessageReaction,
   WorkspaceMessageReactionCode,
   WorkspaceMessageReactionsSnapshot,
+  WorkspaceMessageReply,
   WorkspaceMember,
   WorkspaceServer,
   WorkspaceVoicePresenceChannel
@@ -187,7 +189,14 @@ interface SendMessageTrigger {
   payload: {
     content: string;
     files: File[];
+    replyToMessageId?: string | null;
   };
+}
+
+interface MarkChannelReadTrigger {
+  token: string;
+  channelId: string;
+  lastMessageId: string | null;
 }
 
 interface DownloadAttachmentTrigger {
@@ -420,6 +429,7 @@ export class AppComponent {
   private readonly createChannelSubmit$ = new Subject<CreateChannelTrigger>();
   private readonly deleteChannelTrigger$ = new Subject<DeleteChannelTrigger>();
   private readonly sendMessageTrigger$ = new Subject<SendMessageTrigger>();
+  private readonly markChannelReadTrigger$ = new Subject<MarkChannelReadTrigger>();
   private readonly downloadAttachmentTrigger$ = new Subject<DownloadAttachmentTrigger>();
   private readonly loadAttachmentPreviewTrigger$ = new Subject<LoadAttachmentPreviewTrigger>();
   private readonly voiceMemberRoleTrigger$ = new Subject<VoiceMemberRoleTrigger>();
@@ -431,6 +441,7 @@ export class AppComponent {
   private readonly messageReactionTrigger$ = new Subject<MessageReactionTrigger>();
   private readonly profileUpdateTrigger$ = new Subject<ProfileUpdateTrigger>();
   private readonly pendingMessageReactionKeys = new Set<string>();
+  private readonly lastMarkedReadMessageIdByChannel = new Map<string, string | null>();
   private profileAvatarSelectionMode: 'instant' | 'editor' = 'instant';
   private profileAvatarPreviewObjectUrl: string | null = null;
 
@@ -505,6 +516,7 @@ export class AppComponent {
   readonly messagesCursor = signal<string | null>(null);
   readonly selectedServerId = signal<string | null>(null);
   readonly selectedChannelId = signal<string | null>(null);
+  readonly selectedReplyMessage = signal<WorkspaceMessage | null>(null);
   readonly settingsPanelOpen = signal(false);
   readonly voiceAdminPanelOpen = signal(false);
   readonly profileEditorOpen = signal(false);
@@ -1410,6 +1422,7 @@ export class AppComponent {
             tap((message) => {
               this.messageDraft.set('');
               this.pendingFiles.set([]);
+              this.selectedReplyMessage.set(null);
               this.scheduleMessageTextareaResize();
 
               if (this.selectedChannelId() !== channelId) {
@@ -1419,6 +1432,7 @@ export class AppComponent {
               this.messages.update((messages) => this.mergeMessagesChronologically([...messages, message]));
               this.preloadInlineImagePreviews([message]);
               this.scrollMessagesToBottom();
+              this.markChannelAsRead(channelId, message.id);
             }),
             catchError((error) => {
               this.messageError.set(this.extractErrorMessage(error, 'Не удалось отправить сообщение'));
@@ -1428,6 +1442,15 @@ export class AppComponent {
               this.messageSubmitting.set(false);
             })
           )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.markChannelReadTrigger$
+      .pipe(
+        switchMap(({ token, channelId, lastMessageId }) =>
+          this.workspaceApi.markChannelRead(token, channelId, lastMessageId).pipe(catchError(() => EMPTY))
         ),
         takeUntilDestroyed(this.destroyRef)
       )
@@ -2367,11 +2390,45 @@ export class AppComponent {
 
   onMessageListScroll(): void {
     const element = this.messageListRef?.nativeElement;
-    if (!element || element.scrollTop > 120) {
+    if (!element) {
+      return;
+    }
+
+    if (element.scrollTop > 120) {
+      const isNearBottom = element.scrollHeight - element.scrollTop - element.clientHeight <= 80;
+      if (isNearBottom) {
+        this.markLatestMessageAsRead();
+      }
       return;
     }
 
     this.loadOlderMessages();
+  }
+
+  startReplyToMessage(message: WorkspaceMessage): void {
+    this.selectedReplyMessage.set(message);
+    this.schedulePresenceHeartbeat();
+    this.focusMessageComposer();
+  }
+
+  clearReplyTarget(): void {
+    this.selectedReplyMessage.set(null);
+  }
+
+  replyPreviewText(reply: WorkspaceMessageReply | WorkspaceMessage): string {
+    if (reply.content.trim()) {
+      return reply.content;
+    }
+
+    if ('attachments_count' in reply && reply.attachments_count > 0) {
+      return `Вложений: ${reply.attachments_count}`;
+    }
+
+    if ('attachments' in reply && reply.attachments.length > 0) {
+      return `Вложений: ${reply.attachments.length}`;
+    }
+
+    return 'Без текста';
   }
 
   submitMessage(): void {
@@ -2388,7 +2445,8 @@ export class AppComponent {
 
     const payload = {
       content: this.messageDraft().trim(),
-      files: this.pendingFiles()
+      files: this.pendingFiles(),
+      replyToMessageId: this.selectedReplyMessage()?.id ?? null,
     };
     const channelId = activeChannel.id;
 
@@ -2420,6 +2478,18 @@ export class AppComponent {
     return this.messageReactionOptions.find((option) => option.code === code)?.label ?? 'Реакция';
   }
 
+  messageReadReceiptLabel(message: WorkspaceMessage): string {
+    if (!message.read_by.length) {
+      return '';
+    }
+
+    const names = message.read_by
+      .slice(0, 3)
+      .map((reader) => this.displayCharacterName(reader.character_name, reader.nick));
+    const suffix = message.read_by.length > 3 ? ` и еще ${message.read_by.length - 3}` : '';
+    return `Прочитали: ${names.join(', ')}${suffix}`;
+  }
+
   isMessageReactionPending(messageId: string, reactionCode: WorkspaceMessageReactionCode): boolean {
     return this.pendingMessageReactionKeys.has(this.buildMessageReactionKey(messageId, reactionCode));
   }
@@ -2438,6 +2508,10 @@ export class AppComponent {
     this.messageError.set(null);
     this.schedulePresenceHeartbeat(true);
     this.messageReactionTrigger$.next({ token, message, reactionCode, remove });
+  }
+
+  private focusMessageComposer(): void {
+    requestAnimationFrame(() => this.messageTextareaRef?.nativeElement.focus());
   }
 
   downloadAttachment(attachment: WorkspaceMessageAttachment): void {
@@ -3331,6 +3405,9 @@ export class AppComponent {
       case 'message_reactions_updated':
         this.handleMessageReactionsUpdatedEvent(event);
         return;
+      case 'message_read_updated':
+        this.handleMessageReadUpdatedEvent(event);
+        return;
       case 'channels_updated':
         this.handleChannelsUpdatedEvent(event);
         return;
@@ -3435,6 +3512,10 @@ export class AppComponent {
     if (isNearBottom || event.message.author.id === this.currentUser()?.id) {
       this.scrollMessagesToBottom();
     }
+
+    if (event.message.author.id !== this.currentUser()?.id && isNearBottom) {
+      this.markChannelAsRead(event.message.channel_id, event.message.id);
+    }
   }
 
   private handleMessageReactionsUpdatedEvent(event: AppMessageReactionsUpdatedEvent): void {
@@ -3443,6 +3524,43 @@ export class AppComponent {
     }
 
     this.applyMessageReactionSnapshot(event.snapshot, true);
+  }
+
+  private handleMessageReadUpdatedEvent(event: AppMessageReadUpdatedEvent): void {
+    if (event.server_id !== this.selectedServerId()) {
+      return;
+    }
+
+    const readerId = event.state.user_id;
+    const currentUserId = this.currentUser()?.id;
+    this.messages.update((messages) =>
+      messages.map((message) => {
+        const withoutReader = message.read_by.filter((reader) => reader.id !== readerId);
+        if (event.state.last_read_message_id !== message.id || readerId === message.author.id || readerId === currentUserId) {
+          if (withoutReader.length === message.read_by.length) {
+            return message;
+          }
+
+          return {
+            ...message,
+            read_by: withoutReader,
+          };
+        }
+
+        return {
+          ...message,
+          read_by: [
+            {
+              id: readerId,
+              nick: event.state.nick,
+              character_name: event.state.character_name,
+              avatar_updated_at: event.state.avatar_updated_at,
+            },
+            ...withoutReader,
+          ],
+        };
+      })
+    );
   }
 
   private applyChannelsSnapshot(
@@ -3967,6 +4085,8 @@ export class AppComponent {
             this.restoreMessageScrollPosition(previousScrollHeight, previousScrollTop);
           } else {
             this.scrollMessagesToBottom();
+            const latestMessage = page.items.length ? page.items[page.items.length - 1] : null;
+            this.markChannelAsRead(channelId, latestMessage?.id ?? null);
           }
         },
         error: (error) => {
@@ -4195,6 +4315,10 @@ export class AppComponent {
           if (isNearBottom) {
             this.scrollMessagesToBottom();
           }
+
+          const currentMessages = this.messages();
+          const latestMessage = currentMessages.length ? currentMessages[currentMessages.length - 1] : null;
+          this.markChannelAsRead(channelId, latestMessage?.id ?? null);
         },
         error: () => {
           // Silent refresh should not interrupt reading with transient errors.
@@ -4203,9 +4327,14 @@ export class AppComponent {
   }
 
   private resetTextChannelState(): void {
+    const selectedChannelId = this.selectedChannelId();
+    if (selectedChannelId) {
+      this.lastMarkedReadMessageIdByChannel.delete(selectedChannelId);
+    }
     this.messages.set([]);
     this.clearAttachmentPreviews();
     this.openedMessageReactionPickerId.set(null);
+    this.selectedReplyMessage.set(null);
     this.messagesHasMore.set(false);
     this.messagesCursor.set(null);
     this.messagesLoading.set(false);
@@ -4276,6 +4405,31 @@ export class AppComponent {
     this.openedImageAttachmentId.set(null);
   }
 
+  private markLatestMessageAsRead(): void {
+    const activeChannel = this.activeChannel();
+    if (!activeChannel || (activeChannel.type !== 'text' && activeChannel.type !== 'voice')) {
+      return;
+    }
+
+    const messages = this.messages();
+    const latestMessage = messages.length ? messages[messages.length - 1] : null;
+    this.markChannelAsRead(activeChannel.id, latestMessage?.id ?? null);
+  }
+
+  private markChannelAsRead(channelId: string, lastMessageId: string | null): void {
+    const token = this.session()?.access_token;
+    if (!token || !channelId || !lastMessageId) {
+      return;
+    }
+
+    if (this.lastMarkedReadMessageIdByChannel.get(channelId) === lastMessageId) {
+      return;
+    }
+
+    this.lastMarkedReadMessageIdByChannel.set(channelId, lastMessageId);
+    this.markChannelReadTrigger$.next({ token, channelId, lastMessageId });
+  }
+
   private buildUserAvatarUrl(userId: string | null, avatarUpdatedAt: string | null): string | null {
     if (!userId || !avatarUpdatedAt) {
       return null;
@@ -4289,19 +4443,42 @@ export class AppComponent {
     this.messages.update((messages) =>
       messages.map((message) => {
         const member = membersByUserId.get(message.author.id);
-        if (!member) {
-          return message;
-        }
+        const replyAuthorMember = message.reply_to ? membersByUserId.get(message.reply_to.author.id) : null;
 
         return {
           ...message,
-          author: {
-            ...message.author,
-            nick: member.nick,
-            full_name: member.full_name,
-            character_name: member.character_name,
-            avatar_updated_at: member.avatar_updated_at
-          }
+          author: member
+            ? {
+                ...message.author,
+                nick: member.nick,
+                full_name: member.full_name,
+                character_name: member.character_name,
+                avatar_updated_at: member.avatar_updated_at
+              }
+            : message.author,
+          reply_to: message.reply_to && replyAuthorMember
+            ? {
+                ...message.reply_to,
+                author: {
+                  ...message.reply_to.author,
+                  nick: replyAuthorMember.nick,
+                  full_name: replyAuthorMember.full_name,
+                  character_name: replyAuthorMember.character_name,
+                  avatar_updated_at: replyAuthorMember.avatar_updated_at
+                }
+              }
+            : message.reply_to,
+          read_by: message.read_by.map((reader) => {
+            const readerMember = membersByUserId.get(reader.id);
+            return readerMember
+              ? {
+                  ...reader,
+                  nick: readerMember.nick,
+                  character_name: readerMember.character_name,
+                  avatar_updated_at: readerMember.avatar_updated_at
+                }
+              : reader;
+          })
         };
       })
     );
@@ -4358,18 +4535,42 @@ export class AppComponent {
 
     this.messages.update((messages) =>
       messages.map((message) =>
-        message.author.id === updatedUser.id
-          ? {
-              ...message,
-              author: {
-                ...message.author,
-                nick: updatedUser.nick,
-                full_name: updatedUser.full_name,
-                character_name: updatedUser.character_name,
-                avatar_updated_at: updatedUser.avatar_updated_at
-              }
-            }
-          : message
+        ({
+          ...message,
+          author:
+            message.author.id === updatedUser.id
+              ? {
+                  ...message.author,
+                  nick: updatedUser.nick,
+                  full_name: updatedUser.full_name,
+                  character_name: updatedUser.character_name,
+                  avatar_updated_at: updatedUser.avatar_updated_at
+                }
+              : message.author,
+          reply_to:
+            message.reply_to?.author.id === updatedUser.id
+              ? {
+                  ...message.reply_to,
+                  author: {
+                    ...message.reply_to.author,
+                    nick: updatedUser.nick,
+                    full_name: updatedUser.full_name,
+                    character_name: updatedUser.character_name,
+                    avatar_updated_at: updatedUser.avatar_updated_at
+                  }
+                }
+              : message.reply_to,
+          read_by: message.read_by.map((reader) =>
+            reader.id === updatedUser.id
+              ? {
+                  ...reader,
+                  nick: updatedUser.nick,
+                  character_name: updatedUser.character_name,
+                  avatar_updated_at: updatedUser.avatar_updated_at
+                }
+              : reader
+          )
+        })
       )
     );
 

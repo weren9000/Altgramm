@@ -176,6 +176,10 @@ class Message(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
     author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    reply_to_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     type: Mapped[MessageType] = mapped_column(
         Enum(MessageType, name="messagetype", values_callable=enum_values),
@@ -186,10 +190,18 @@ class Message(TimestampMixin, Base):
 
     channel: Mapped["Channel"] = relationship(back_populates="messages")
     author: Mapped["User"] = relationship(back_populates="messages")
+    reply_to: Mapped["Message | None"] = relationship(
+        remote_side="Message.id",
+        back_populates="replies",
+    )
+    replies: Mapped[list["Message"]] = relationship(back_populates="reply_to")
     attachments: Mapped[list["Attachment"]] = relationship(back_populates="message", cascade="all, delete-orphan")
     reactions: Mapped[list["MessageReaction"]] = relationship(
         back_populates="message",
         cascade="all, delete-orphan",
+    )
+    read_states: Mapped[list["ChannelReadState"]] = relationship(
+        back_populates="last_read_message",
     )
 
 
@@ -226,6 +238,27 @@ class MessageReaction(TimestampMixin, Base):
 
     message: Mapped["Message"] = relationship(back_populates="reactions")
     user: Mapped["User"] = relationship(back_populates="message_reactions")
+
+
+class ChannelReadState(Base):
+    __tablename__ = "channel_read_states"
+    __table_args__ = (
+        UniqueConstraint("channel_id", "user_id", name="uq_channel_read_states_channel_user"),
+        Index("ix_channel_read_states_user_id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    last_read_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    last_read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    channel: Mapped["Channel"] = relationship()
+    user: Mapped["User"] = relationship()
+    last_read_message: Mapped["Message | None"] = relationship(back_populates="read_states")
 
 
 class VoiceChannelAccess(TimestampMixin, Base):
