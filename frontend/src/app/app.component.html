@@ -621,7 +621,7 @@
                     aria-label="Прикрепить файл"
                     title="Прикрепить файл"
                   >
-                    +
+                    <span class="composer__attach-icon">+</span>
                   </button>
 
                   <label class="composer__field">
@@ -664,7 +664,9 @@
                 </div>
               } @else {
                 <div class="composer__surface composer__surface--disabled">
-                  <button class="secondary-button composer__attach" type="button" disabled>+</button>
+                  <button class="secondary-button composer__attach" type="button" disabled>
+                    <span class="composer__attach-icon">+</span>
+                  </button>
                   <label class="composer__field">
                     <textarea disabled placeholder="Чат недоступен" rows="1"></textarea>
                   </label>
