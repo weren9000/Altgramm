@@ -8,7 +8,7 @@ import { EMPTY, Subject, catchError, exhaustMap, finalize, forkJoin, mergeMap, s
 import { AuthApiService } from './core/api/auth-api.service';
 import { API_BASE_URL } from './core/api/api-base';
 import { SystemApiService } from './core/api/system-api.service';
-import { WorkspaceApiService } from './core/api/workspace-api.service';
+import { WorkspaceApiService, WorkspaceMessageUploadEvent } from './core/api/workspace-api.service';
 import {
   ConversationDirectoryUser,
   ConversationMemberPreview,
@@ -217,6 +217,12 @@ interface SendMessageTrigger {
   };
 }
 
+interface MessageUploadProgressState {
+  loaded: number;
+  total: number | null;
+  percent: number | null;
+}
+
 interface MarkChannelReadTrigger {
   token: string;
   channelId: string;
@@ -302,7 +308,7 @@ interface BrowserWakeLock {
 
 const SESSION_STORAGE_KEY = 'tescord.session';
 const MESSAGES_PAGE_SIZE = 25;
-const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
+const MAX_ATTACHMENT_SIZE_BYTES = 500 * 1024 * 1024;
 const MAX_INLINE_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const MAX_PROFILE_AVATAR_DIMENSION = 300;
 const MAX_PROFILE_AVATAR_UPLOAD_BYTES = 2 * 1024 * 1024;
@@ -527,6 +533,7 @@ export class AppComponent {
   readonly messagesLoading = signal(false);
   readonly messagesLoadingMore = signal(false);
   readonly messageSubmitting = signal(false);
+  readonly messageUploadProgress = signal<MessageUploadProgressState | null>(null);
   readonly createConversationLoading = signal(false);
   readonly createGroupLoading = signal(false);
   readonly createChannelLoading = signal(false);
@@ -1718,7 +1725,17 @@ export class AppComponent {
       .pipe(
         exhaustMap(({ token, channelId, payload }) =>
           this.workspaceApi.sendMessage(token, channelId, payload).pipe(
-            tap((message) => {
+            tap((event: WorkspaceMessageUploadEvent) => {
+              if (event.kind === 'progress') {
+                this.messageUploadProgress.set({
+                  loaded: event.loaded,
+                  total: event.total,
+                  percent: event.percent,
+                });
+                return;
+              }
+
+              const message = event.message;
               this.messageDraft.set('');
               this.pendingFiles.set([]);
               this.selectedReplyMessage.set(null);
@@ -1739,6 +1756,7 @@ export class AppComponent {
             }),
             finalize(() => {
               this.messageSubmitting.set(false);
+              this.messageUploadProgress.set(null);
             })
           )
         ),
@@ -2999,9 +3017,42 @@ export class AppComponent {
     const channelId = activeChannel.id;
 
     this.messageSubmitting.set(true);
+    this.messageUploadProgress.set({ loaded: 0, total: null, percent: null });
     this.messageError.set(null);
     this.schedulePresenceHeartbeat(true);
     this.sendMessageTrigger$.next({ token, channelId, payload });
+  }
+
+  messageUploadPercent(progress: MessageUploadProgressState | null): number {
+    if (!progress) {
+      return 0;
+    }
+
+    if (typeof progress.percent === 'number') {
+      return progress.percent;
+    }
+
+    if (progress.total && progress.total > 0) {
+      return Math.min(100, Math.round((progress.loaded / progress.total) * 100));
+    }
+
+    return 0;
+  }
+
+  messageUploadSummary(progress: MessageUploadProgressState | null): string {
+    if (!progress) {
+      return '';
+    }
+
+    if (progress.total && progress.total > 0) {
+      return `${this.formatFileSize(progress.loaded)} из ${this.formatFileSize(progress.total)}`;
+    }
+
+    if (progress.loaded > 0) {
+      return `${this.formatFileSize(progress.loaded)} загружено`;
+    }
+
+    return 'Подготовка загрузки...';
   }
 
   toggleMessageReactionPicker(messageId: string): void {
@@ -5392,7 +5443,7 @@ export class AppComponent {
     }
 
     if (rejectedFile) {
-      this.messageError.set(`Файл ${rejectedFile.name} превышает лимит 50 МБ`);
+      this.messageError.set(`Файл ${rejectedFile.name} превышает лимит 500 МБ`);
     }
   }
 

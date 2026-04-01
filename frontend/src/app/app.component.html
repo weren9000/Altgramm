@@ -568,6 +568,18 @@
                   </div>
                 }
 
+                @if (messageUploadProgress(); as uploadProgress) {
+                  <div class="composer__upload-progress" aria-live="polite">
+                    <div class="composer__upload-progress-copy">
+                      <strong>Загрузка {{ messageUploadPercent(uploadProgress) }}%</strong>
+                      <small>{{ messageUploadSummary(uploadProgress) }}</small>
+                    </div>
+                    <div class="composer__upload-progress-track">
+                      <span [style.width.%]="messageUploadPercent(uploadProgress)"></span>
+                    </div>
+                  </div>
+                }
+
                 <div class="composer__surface" [class.composer__surface--busy]="messageSubmitting()">
                   <button
                     class="secondary-button composer__attach"

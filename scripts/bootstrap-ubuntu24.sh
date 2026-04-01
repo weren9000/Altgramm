@@ -147,7 +147,7 @@ server {
 server {
     listen 443 ssl http2;
     server_name ${APP_DOMAIN};
-    client_max_body_size 55m;
+    client_max_body_size 500m;
 
     ssl_certificate ${SELF_SIGNED_CERT};
     ssl_certificate_key ${SELF_SIGNED_KEY};

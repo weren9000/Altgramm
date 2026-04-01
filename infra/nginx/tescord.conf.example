@@ -1,7 +1,7 @@
 server {
     listen 80;
     server_name chat.example.com;
-    client_max_body_size 55m;
+    client_max_body_size 500m;
 
     root /srv/tescord/frontend/dist/frontend/browser;
     index index.html;

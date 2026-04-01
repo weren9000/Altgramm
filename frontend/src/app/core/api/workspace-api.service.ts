@@ -1,6 +1,6 @@
-import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpEventType, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, filter, map } from 'rxjs';
 
 import { API_BASE_URL } from './api-base';
 import {
@@ -282,7 +282,7 @@ export class WorkspaceApiService {
       files: File[];
       replyToMessageId?: string | null;
     }
-  ): Observable<WorkspaceMessage> {
+  ): Observable<WorkspaceMessageUploadEvent> {
     const formData = new FormData();
     formData.append('content', payload.content);
     if (payload.replyToMessageId) {
@@ -293,8 +293,32 @@ export class WorkspaceApiService {
     }
 
     return this.http.post<WorkspaceMessage>(`${API_BASE_URL}/api/channels/${channelId}/messages`, formData, {
-      headers: this.buildAuthHeaders(token)
-    });
+      headers: this.buildAuthHeaders(token),
+      observe: 'events',
+      reportProgress: true
+    }).pipe(
+      map((event): WorkspaceMessageUploadEvent | null => {
+        if (event.type === HttpEventType.UploadProgress) {
+          const total = event.total ?? null;
+          return {
+            kind: 'progress',
+            loaded: event.loaded,
+            total,
+            percent: total && total > 0 ? Math.min(100, Math.round((event.loaded / total) * 100)) : null
+          };
+        }
+
+        if (event.type === HttpEventType.Response && event.body) {
+          return {
+            kind: 'response',
+            message: event.body
+          };
+        }
+
+        return null;
+      }),
+      filter((event): event is WorkspaceMessageUploadEvent => event !== null)
+    );
   }
 
   markChannelRead(token: string, channelId: string, lastMessageId?: string | null): Observable<WorkspaceChannelReadState> {
@@ -347,3 +371,19 @@ export class WorkspaceApiService {
     });
   }
 }
+
+export interface WorkspaceMessageUploadProgressEvent {
+  kind: 'progress';
+  loaded: number;
+  total: number | null;
+  percent: number | null;
+}
+
+export interface WorkspaceMessageUploadResponseEvent {
+  kind: 'response';
+  message: WorkspaceMessage;
+}
+
+export type WorkspaceMessageUploadEvent =
+  | WorkspaceMessageUploadProgressEvent
+  | WorkspaceMessageUploadResponseEvent;

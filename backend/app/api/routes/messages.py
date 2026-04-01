@@ -48,7 +48,7 @@ router = APIRouter(tags=["messages"])
 
 DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 50
-MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024
+MAX_ATTACHMENT_SIZE_BYTES = 500 * 1024 * 1024
 MESSAGE_REACTION_ORDER: tuple[MessageReactionKind, ...] = (
     MessageReactionKind.HEART,
     MessageReactionKind.LIKE,
@@ -387,7 +387,7 @@ async def create_channel_message(
             if len(payload) > MAX_ATTACHMENT_SIZE_BYTES:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"Файл {upload.filename!r} превышает лимит 50 МБ",
+                    detail=f"Файл {upload.filename!r} превышает лимит 500 МБ",
                 )
 
             attachment = Attachment(

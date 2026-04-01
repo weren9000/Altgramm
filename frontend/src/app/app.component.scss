@@ -2410,6 +2410,48 @@ select {
   line-height: 1;
 }
 
+.composer__upload-progress {
+  display: grid;
+  gap: 6px;
+  padding: 6px 8px 2px;
+}
+
+.composer__upload-progress-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.composer__upload-progress-copy strong {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.composer__upload-progress-copy small {
+  font-size: 0.68rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.composer__upload-progress-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.composer__upload-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(61, 214, 198, 0.94), rgba(83, 255, 139, 0.92));
+  transition: width 160ms ease;
+}
+
 .composer__surface {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) 42px;
@@ -4176,6 +4218,19 @@ select {
   .composer__reply {
     padding: 6px 8px;
     gap: 6px;
+  }
+
+  .composer__upload-progress {
+    padding-inline: 4px;
+  }
+
+  .composer__upload-progress-copy {
+    gap: 8px;
+  }
+
+  .composer__upload-progress-copy strong,
+  .composer__upload-progress-copy small {
+    font-size: 0.68rem;
   }
 
   .composer__surface {
