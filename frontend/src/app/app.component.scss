@@ -4260,8 +4260,7 @@ select {
 }
 
 .app-header__menu,
-.app-header__sidebar-toggle,
-.header-call-button {
+.app-header__sidebar-toggle {
   min-height: 42px;
   min-width: 42px;
   display: inline-flex;
@@ -4273,17 +4272,11 @@ select {
   display: none;
 }
 
-.header-call-button img,
 .conversation-head__action img,
 .group-voice-card__action img,
 .side-drawer__action img {
   width: 16px;
   height: 16px;
-}
-
-.header-call-button--active {
-  border-color: rgba(157, 253, 56, 0.55);
-  box-shadow: 0 0 0 1px rgba(157, 253, 56, 0.24) inset;
 }
 
 .messenger-layout {

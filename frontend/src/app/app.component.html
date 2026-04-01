@@ -131,25 +131,7 @@
         <img class="app-header__logo" src="/assets/KVA-chat.png" alt="KVA Chat" />
       </div>
 
-      <div class="app-header__actions">
-        @if (isChatsMode() && activeDirectPeer()) {
-          <button class="primary-button header-call-button" type="button" title="Позвонить" aria-label="Позвонить" (click)="openActiveDirectPeerCall()">
-            <img src="/assets/Phone_connect.svg" alt="" />
-          </button>
-        }
-        @if (isGroupsMode() && activeGroupVoiceChannel()) {
-          <button
-            class="secondary-button header-call-button"
-            type="button"
-            [class.header-call-button--active]="connectedVoiceChannelId() === activeGroupVoiceChannel()?.id"
-            [attr.title]="connectedVoiceChannelId() === activeGroupVoiceChannel()?.id ? 'Выйти из голосового чата' : 'Войти в голосовой чат'"
-            [attr.aria-label]="connectedVoiceChannelId() === activeGroupVoiceChannel()?.id ? 'Выйти из голосового чата' : 'Войти в голосовой чат'"
-            (click)="toggleActiveGroupVoice()"
-          >
-            <img [src]="connectedVoiceChannelId() === activeGroupVoiceChannel()?.id ? '/assets/Phone outgoing.svg' : '/assets/Phone_connect.svg'" alt="" />
-          </button>
-        }
-      </div>
+      <div class="app-header__actions"></div>
     </header>
 
     @if (sideMenuOpen()) {
