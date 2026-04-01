@@ -243,7 +243,8 @@ def _message_load_options():
         Attachment.storage_path,
         Attachment.created_at,
     )
-    reply_attachment_summary_load = selectinload(Message.reply_to).selectinload(Message.attachments).load_only(
+    reply_to_load = joinedload(Message.reply_to)
+    reply_attachment_summary_load = reply_to_load.selectinload(Message.attachments).load_only(
         Attachment.id,
         Attachment.message_id,
         Attachment.filename,
@@ -257,7 +258,7 @@ def _message_load_options():
     return (
         joinedload(Message.author),
         joinedload(Message.channel),
-        joinedload(Message.reply_to).joinedload(Message.author),
+        reply_to_load.joinedload(Message.author),
         reply_attachment_summary_load,
         attachment_summary_load,
         selectinload(Message.reactions),
