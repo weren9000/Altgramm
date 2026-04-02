@@ -137,27 +137,32 @@
     @if (sideMenuOpen()) {
       <button class="drawer-backdrop" type="button" aria-label="Закрыть меню" (click)="closeSideMenu()"></button>
       <aside class="side-drawer">
-        <div class="side-drawer__profile">
-          <button
-            class="profile-avatar-button"
-            type="button"
-            [disabled]="!currentUser() || profileSaving()"
-            title="Нажмите, чтобы изменить аватарку"
-            (click)="openProfileAvatarPicker('instant')"
-          >
-            @if (currentUserAvatarUrl(); as avatarUrl) {
-              <img [src]="avatarUrl" [alt]="displayNick(currentUser()?.nick ?? '')" loading="lazy" />
-            } @else {
-              <span>{{ displayNickInitials(currentUser()?.nick ?? '??') }}</span>
-            }
-          </button>
-          <div class="side-drawer__identity">
-            <strong>{{ displayNick(currentUser()?.nick ?? '') }}</strong>
-            @if (currentUser(); as user) {
-              <small>ID: {{ formatPublicUserId(user.public_id) }}</small>
-              <span>{{ user.email }}</span>
-            }
+        <div class="side-drawer__top">
+          <div class="side-drawer__profile">
+            <button
+              class="profile-avatar-button"
+              type="button"
+              [disabled]="!currentUser() || profileSaving()"
+              title="Нажмите, чтобы изменить аватарку"
+              (click)="openProfileAvatarPicker('instant')"
+            >
+              @if (currentUserAvatarUrl(); as avatarUrl) {
+                <img [src]="avatarUrl" [alt]="displayNick(currentUser()?.nick ?? '')" loading="lazy" />
+              } @else {
+                <span>{{ displayNickInitials(currentUser()?.nick ?? '??') }}</span>
+              }
+            </button>
+            <div class="side-drawer__identity">
+              <strong>{{ displayNick(currentUser()?.nick ?? '') }}</strong>
+              @if (currentUser(); as user) {
+                <small>ID: {{ formatPublicUserId(user.public_id) }}</small>
+                <span>{{ user.email }}</span>
+              }
+            </div>
           </div>
+          <button class="secondary-button side-drawer__close" type="button" aria-label="Закрыть меню" title="Закрыть меню" (click)="closeSideMenu()">
+            ×
+          </button>
         </div>
 
         <div class="side-drawer__actions">
@@ -316,13 +321,13 @@
                 </button>
               }
               @if (isGroupsMode()) {
-                <button class="secondary-button conversation-head__action" type="button" (click)="openGroupMembersPanel()">
-                  Пользователи
+                <button class="secondary-button conversation-head__action conversation-head__action--icon" type="button" aria-label="Пользователи" title="Пользователи" (click)="openGroupMembersPanel()">
+                  <img src="/assets/Group_fill.svg" alt="" />
                 </button>
               }
               @if (isGroupsMode() && canManageActiveGroup()) {
-                <button class="secondary-button conversation-head__action" type="button" (click)="openAddGroupMemberModal()">
-                  Добавить участника
+                <button class="secondary-button conversation-head__action conversation-head__action--icon" type="button" aria-label="Добавить участника" title="Добавить участника" (click)="openAddGroupMemberModal()">
+                  <img src="/assets/User_fill_add.svg" alt="" />
                 </button>
               }
             </div>
@@ -340,22 +345,54 @@
             <section class="group-overview">
               @if (activeGroupVoiceChannel(); as groupVoiceChannel) {
                 <div class="group-voice-card" [class.group-voice-card--active]="connectedVoiceChannelId() === groupVoiceChannel.id">
-                  <div class="group-voice-card__copy">
-                    <p class="eyebrow">Голосовой чат</p>
-                    <strong>{{ groupVoiceChannel.name }}</strong>
-                    <small>
-                      @if (connectedVoiceChannelId() === groupVoiceChannel.id) {
-                        Вы в канале
-                      } @else {
-                        Можно войти в любой момент
-                      }
-                      · участников: {{ activeGroupVoiceParticipants().length }}
-                    </small>
-                  </div>
+                  <button
+                    class="group-voice-card__summary"
+                    type="button"
+                    [attr.aria-expanded]="groupVoiceParticipantsExpanded()"
+                    [attr.aria-label]="groupVoiceParticipantsExpanded() ? 'Скрыть активных участников голосового чата' : 'Показать активных участников голосового чата'"
+                    (click)="toggleGroupVoiceParticipantsExpanded()"
+                  >
+                    <div class="group-voice-card__copy">
+                      <p class="eyebrow">Голосовой чат</p>
+                      <strong>{{ groupVoiceChannel.name }}</strong>
+                      <small>
+                        @if (connectedVoiceChannelId() === groupVoiceChannel.id) {
+                          Вы в канале
+                        } @else {
+                          Можно войти в любой момент
+                        }
+                        · участников: {{ activeGroupVoiceParticipants().length }}
+                      </small>
+                    </div>
+                  </button>
                   <button class="secondary-button group-voice-card__action" type="button" (click)="toggleActiveGroupVoice()">
                     <img [src]="connectedVoiceChannelId() === groupVoiceChannel.id ? '/assets/Phone outgoing.svg' : '/assets/Phone_connect.svg'" alt="" />
                   </button>
                 </div>
+                @if (groupVoiceParticipantsExpanded()) {
+                  <div class="group-voice-roster">
+                    @if (activeGroupVoiceParticipants().length) {
+                      @for (participant of activeGroupVoiceParticipants(); track participant.id) {
+                        <div class="group-voice-roster__member">
+                          <div class="group-voice-roster__avatar">
+                            @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
+                              <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
+                            } @else {
+                              <span>{{ displayNickInitials(participant.nick) }}</span>
+                            }
+                          </div>
+                          <div class="group-voice-roster__copy">
+                            <strong>{{ displayNick(participant.nick) }}</strong>
+                            <small>{{ voiceStateIconAlt(participant) }}</small>
+                          </div>
+                          <img class="group-voice-roster__state" [src]="voiceStateIconPath(participant)" [alt]="voiceStateIconAlt(participant)" />
+                        </div>
+                      }
+                    } @else {
+                      <div class="group-voice-roster__empty">В голосовом чате пока никого нет</div>
+                    }
+                  </div>
+                }
               }
             </section>
           }

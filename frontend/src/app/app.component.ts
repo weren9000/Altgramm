@@ -566,6 +566,7 @@ export class AppComponent {
   readonly addGroupMemberModalOpen = signal(false);
   readonly createChannelModalOpen = signal(false);
   readonly groupMembersModalOpen = signal(false);
+  readonly groupVoiceParticipantsExpanded = signal(false);
   readonly sideMenuOpen = signal(false);
   readonly selectedMemberUserId = signal<string | null>(null);
   readonly selectedVoiceMemberChannelId = signal<string | null>(null);
@@ -2484,6 +2485,10 @@ export class AppComponent {
 
   closeGroupMembersPanel(): void {
     this.groupMembersModalOpen.set(false);
+  }
+
+  toggleGroupVoiceParticipantsExpanded(): void {
+    this.groupVoiceParticipantsExpanded.update((expanded) => !expanded);
   }
 
   openGroupMemberFromPanel(member: GroupMemberItem): void {
@@ -4684,6 +4689,7 @@ export class AppComponent {
     this.appEvents.setActiveServer(serverId);
     this.selectedChannelId.set(null);
     this.groupMembersModalOpen.set(false);
+    this.groupVoiceParticipantsExpanded.set(false);
     this.selectedMemberUserId.set(null);
     this.selectedVoiceMemberChannelId.set(null);
     this.voicePresence.set([]);
