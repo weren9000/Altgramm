@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = "20260402_0019"
@@ -36,7 +37,7 @@ def upgrade() -> None:
         sa.Column("target_user_id", sa.Uuid(), nullable=False),
         sa.Column(
             "status",
-            sa.Enum(
+            postgresql.ENUM(
                 "pending",
                 "accepted",
                 "rejected",
