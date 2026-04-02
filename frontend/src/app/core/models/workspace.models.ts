@@ -93,11 +93,22 @@ export interface WorkspaceMessageAttachment {
   mime_type: string;
   size_bytes: number;
   created_at: string;
+  deleted_at: string | null;
 }
 
 export interface WorkspaceAttachmentDownloadLink {
   url: string;
   expires_at: string;
+}
+
+export interface WorkspaceChatAttachmentSummary {
+  id: string;
+  message_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+  author: WorkspaceMessageAuthor;
 }
 
 export type WorkspaceMessageReactionCode =

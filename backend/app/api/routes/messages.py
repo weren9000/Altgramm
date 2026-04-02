@@ -27,6 +27,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.schemas.workspace import (
+    ChatAttachmentSummary,
     ChannelMessageSummary,
     ChannelMessagesPage,
     ChannelReadStateSummary,
@@ -40,6 +41,7 @@ from app.schemas.workspace import (
     MessageReplySummary,
 )
 from app.services.app_events import (
+    publish_attachment_deleted,
     publish_message_created,
     publish_message_read_updated,
     publish_message_reactions_updated,
@@ -102,6 +104,19 @@ def _build_attachment_summary(attachment: Attachment) -> MessageAttachmentSummar
         mime_type=attachment.mime_type,
         size_bytes=attachment.size_bytes,
         created_at=attachment.created_at,
+        deleted_at=attachment.deleted_at,
+    )
+
+
+def _build_chat_attachment_summary(attachment: Attachment) -> ChatAttachmentSummary:
+    return ChatAttachmentSummary(
+        id=attachment.id,
+        message_id=attachment.message_id,
+        filename=attachment.filename,
+        mime_type=attachment.mime_type,
+        size_bytes=attachment.size_bytes,
+        created_at=attachment.created_at,
+        author=_build_author_summary(attachment.message.author),
     )
 
 
@@ -247,6 +262,7 @@ def _message_load_options():
         Attachment.size_bytes,
         Attachment.checksum_sha256,
         Attachment.storage_path,
+        Attachment.deleted_at,
         Attachment.created_at,
     )
     reply_to_load = joinedload(Message.reply_to)
@@ -258,6 +274,7 @@ def _message_load_options():
         Attachment.size_bytes,
         Attachment.checksum_sha256,
         Attachment.storage_path,
+        Attachment.deleted_at,
         Attachment.created_at,
     )
 
@@ -324,6 +341,37 @@ def _get_accessible_attachment(db: Session, attachment_id: UUID, current_user: U
 
     _get_accessible_message_channel(db, message.channel_id, current_user)
     return attachment
+
+
+def _get_downloadable_attachment(db: Session, attachment_id: UUID, current_user: User) -> Attachment:
+    attachment = _get_accessible_attachment(db, attachment_id, current_user)
+    if attachment.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Файл удален")
+    return attachment
+
+
+def _get_channel_attachment_rows(db: Session, channel_id: UUID) -> list[Attachment]:
+    return db.execute(
+        select(Attachment)
+        .join(Message, Message.id == Attachment.message_id)
+        .where(
+            Message.channel_id == channel_id,
+            Attachment.deleted_at.is_(None),
+        )
+        .options(
+            joinedload(Attachment.message).joinedload(Message.author),
+            load_only(
+                Attachment.id,
+                Attachment.message_id,
+                Attachment.filename,
+                Attachment.mime_type,
+                Attachment.size_bytes,
+                Attachment.created_at,
+                Attachment.deleted_at,
+            ),
+        )
+        .order_by(Attachment.created_at.desc(), Attachment.id.desc())
+    ).scalars().all()
 
 def _build_attachment_download_response(attachment: Attachment) -> Response:
     headers = {
@@ -545,6 +593,17 @@ async def create_channel_message(
     return message_summary
 
 
+@router.get("/channels/{channel_id}/attachments", response_model=list[ChatAttachmentSummary])
+def list_channel_attachments(
+    channel_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ChatAttachmentSummary]:
+    channel = _get_accessible_message_channel(db, channel_id, current_user)
+    attachments = _get_channel_attachment_rows(db, channel.id)
+    return [_build_chat_attachment_summary(attachment) for attachment in attachments]
+
+
 @router.post("/channels/{channel_id}/read", response_model=ChannelReadStateSummary)
 async def mark_channel_read(
     channel_id: UUID,
@@ -654,7 +713,7 @@ def create_attachment_download_link(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AttachmentDownloadLinkResponse:
-    _get_accessible_attachment(db, attachment_id, current_user)
+    _get_downloadable_attachment(db, attachment_id, current_user)
     token, expires_at = _create_attachment_download_token(attachment_id, current_user.id)
     return AttachmentDownloadLinkResponse(
         url=f"{settings.api_prefix}/attachments/{attachment_id}/download?token={quote(token, safe='')}",
@@ -676,7 +735,7 @@ def download_attachment_by_token(
             detail="Р РЋРЎРѓРЎвЂ№Р В»Р С”Р В° Р Р…Р В° РЎРѓР С”Р В°РЎвЂЎР С‘Р Р†Р В°Р Р…Р С‘Р Вµ Р Р…Р ВµР Т‘Р ВµР в„–РЎРѓРЎвЂљР Р†Р С‘РЎвЂљР ВµР В»РЎРЉР Р…Р В°",
         )
 
-    attachment = _get_accessible_attachment(db, attachment_id, user)
+    attachment = _get_downloadable_attachment(db, attachment_id, user)
     return _build_attachment_download_response(attachment)
 
 
@@ -716,12 +775,43 @@ async def remove_message_reaction(
     return snapshot
 
 
+@router.delete("/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_attachment(
+    attachment_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    attachment = _get_accessible_attachment(db, attachment_id, current_user)
+    message = db.get(Message, attachment.message_id)
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Р¤Р°Р№Р» РЅРµ РЅР°Р№РґРµРЅ")
+
+    if message.author_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Можно удалить только свой файл")
+
+    if attachment.deleted_at is not None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    storage_path = attachment.storage_path
+    attachment.storage_path = None
+    attachment.content = None
+    attachment.deleted_at = datetime.now(timezone.utc)
+    attachment.deleted_by_user_id = current_user.id
+    db.commit()
+
+    if storage_path:
+        delete_stored_attachment(storage_path)
+
+    await publish_attachment_deleted(message.channel.server_id, message.channel_id, attachment.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/attachments/{attachment_id}")
 def download_attachment(
     attachment_id: UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    attachment = _get_accessible_attachment(db, attachment_id, current_user)
+    attachment = _get_downloadable_attachment(db, attachment_id, current_user)
     return _build_attachment_download_response(attachment)
 

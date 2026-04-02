@@ -21,6 +21,7 @@ import {
   VoiceJoinRequestSummary,
   WorkspaceChannel,
   WorkspaceAttachmentDownloadLink,
+  WorkspaceChatAttachmentSummary,
   WorkspaceMessage,
   WorkspaceChannelReadState,
   WorkspaceMessageReactionCode,
@@ -373,6 +374,18 @@ export class WorkspaceApiService {
     return this.http.get(`${API_BASE_URL}/api/attachments/${attachmentId}`, {
       headers: this.buildAuthHeaders(token),
       responseType: 'blob'
+    });
+  }
+
+  getChannelAttachments(token: string, channelId: string): Observable<WorkspaceChatAttachmentSummary[]> {
+    return this.http.get<WorkspaceChatAttachmentSummary[]>(`${API_BASE_URL}/api/channels/${channelId}/attachments`, {
+      headers: this.buildAuthHeaders(token)
+    });
+  }
+
+  deleteAttachment(token: string, attachmentId: string): Observable<void> {
+    return this.http.delete<void>(`${API_BASE_URL}/api/attachments/${attachmentId}`, {
+      headers: this.buildAuthHeaders(token)
     });
   }
 

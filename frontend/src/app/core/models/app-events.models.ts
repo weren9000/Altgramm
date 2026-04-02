@@ -53,6 +53,13 @@ export interface AppMessageReadUpdatedEvent {
   };
 }
 
+export interface AppAttachmentDeletedEvent {
+  type: 'attachment_deleted';
+  server_id: string;
+  channel_id: string;
+  attachment_id: string;
+}
+
 export interface AppChannelsUpdatedEvent {
   type: 'channels_updated';
   server_id: string;
@@ -101,6 +108,7 @@ export type AppEventsMessage =
   | AppMessageCreatedEvent
   | AppMessageReactionsUpdatedEvent
   | AppMessageReadUpdatedEvent
+  | AppAttachmentDeletedEvent
   | AppChannelsUpdatedEvent
   | AppMembersUpdatedEvent
   | AppVoicePresenceUpdatedEvent

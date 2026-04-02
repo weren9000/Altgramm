@@ -102,11 +102,22 @@ class MessageAttachmentSummary(BaseModel):
     mime_type: str
     size_bytes: int
     created_at: datetime
+    deleted_at: datetime | None = None
 
 
 class AttachmentDownloadLinkResponse(BaseModel):
     url: str
     expires_at: datetime
+
+
+class ChatAttachmentSummary(BaseModel):
+    id: UUID
+    message_id: UUID
+    filename: str
+    mime_type: str
+    size_bytes: int
+    created_at: datetime
+    author: MessageAuthorSummary
 
 
 class MessageReactionSummary(BaseModel):

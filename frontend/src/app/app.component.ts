@@ -18,6 +18,7 @@ import {
 import {
   AppEventsMessage,
   AppChannelsUpdatedEvent,
+  AppAttachmentDeletedEvent,
   AppMessageCreatedEvent,
   AppMessageReadUpdatedEvent,
   AppMessageReactionsUpdatedEvent,
@@ -39,6 +40,7 @@ import {
   VoiceJoinRequestCreateResponse,
   VoiceJoinRequestSummary,
   WorkspaceChannel,
+  WorkspaceChatAttachmentSummary,
   WorkspaceMessage,
   WorkspaceMessageAttachment,
   WorkspaceMessageReaction,
@@ -239,6 +241,16 @@ interface LoadAttachmentPreviewTrigger {
   attachment: WorkspaceMessageAttachment;
   openImageAfterLoad?: boolean;
   reportErrors?: boolean;
+}
+
+interface LoadChatAttachmentsTrigger {
+  token: string;
+  channelId: string;
+}
+
+interface DeleteChatAttachmentTrigger {
+  token: string;
+  attachment: WorkspaceChatAttachmentSummary;
 }
 
 interface VoiceMemberRoleTrigger {
@@ -465,6 +477,8 @@ export class AppComponent {
   private readonly markChannelReadTrigger$ = new Subject<MarkChannelReadTrigger>();
   private readonly downloadAttachmentTrigger$ = new Subject<DownloadAttachmentTrigger>();
   private readonly loadAttachmentPreviewTrigger$ = new Subject<LoadAttachmentPreviewTrigger>();
+  private readonly loadChatAttachmentsTrigger$ = new Subject<LoadChatAttachmentsTrigger>();
+  private readonly deleteChatAttachmentTrigger$ = new Subject<DeleteChatAttachmentTrigger>();
   private readonly voiceMemberRoleTrigger$ = new Subject<VoiceMemberRoleTrigger>();
   private readonly kickVoiceMemberTrigger$ = new Subject<KickVoiceMemberTrigger>();
   private readonly voiceMemberOwnerMuteTrigger$ = new Subject<VoiceMemberOwnerMuteTrigger>();
@@ -536,6 +550,11 @@ export class AppComponent {
   readonly messageSubmitting = signal(false);
   readonly messageUploadProgress = signal<MessageUploadProgressState | null>(null);
   readonly downloadingAttachmentIds = signal<string[]>([]);
+  readonly chatFilesModalOpen = signal(false);
+  readonly chatFilesLoading = signal(false);
+  readonly chatFilesError = signal<string | null>(null);
+  readonly chatAttachments = signal<WorkspaceChatAttachmentSummary[]>([]);
+  readonly deletingChatAttachmentId = signal<string | null>(null);
   readonly createConversationLoading = signal(false);
   readonly createGroupLoading = signal(false);
   readonly createChannelLoading = signal(false);
@@ -1804,6 +1823,53 @@ export class AppComponent {
       )
       .subscribe();
 
+    this.loadChatAttachmentsTrigger$
+      .pipe(
+        switchMap(({ token, channelId }) =>
+          this.workspaceApi.getChannelAttachments(token, channelId).pipe(
+            tap((attachments) => {
+              if (!this.chatFilesModalOpen() || this.activeMessagingChannel()?.id !== channelId) {
+                return;
+              }
+
+              this.chatAttachments.set(attachments);
+              this.chatFilesError.set(null);
+            }),
+            catchError((error) => {
+              this.chatFilesError.set(this.extractErrorMessage(error, 'Не удалось загрузить файлы чата'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.chatFilesLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.deleteChatAttachmentTrigger$
+      .pipe(
+        exhaustMap(({ token, attachment }) =>
+          this.workspaceApi.deleteAttachment(token, attachment.id).pipe(
+            tap(() => {
+              this.chatAttachments.update((items) => items.filter((item) => item.id !== attachment.id));
+              this.applyAttachmentDeletedLocally(attachment.id);
+              this.chatFilesError.set(null);
+            }),
+            catchError((error) => {
+              this.chatFilesError.set(this.extractErrorMessage(error, 'Не удалось удалить файл'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.deletingChatAttachmentId.set(null);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
     this.loadAttachmentPreviewTrigger$
       .pipe(
         mergeMap(({ token, attachment, openImageAfterLoad, reportErrors }) =>
@@ -2304,6 +2370,61 @@ export class AppComponent {
     this.addGroupMemberModalOpen.set(false);
     this.addGroupMemberUserId.set('');
     this.addGroupMemberQuery.set('');
+  }
+
+  openChatFilesModal(): void {
+    const token = this.session()?.access_token;
+    const activeChannel = this.activeMessagingChannel();
+    if (!token || !activeChannel) {
+      return;
+    }
+
+    this.chatFilesModalOpen.set(true);
+    this.chatFilesLoading.set(true);
+    this.chatFilesError.set(null);
+    this.chatAttachments.set([]);
+    this.loadChatAttachmentsTrigger$.next({
+      token,
+      channelId: activeChannel.id,
+    });
+  }
+
+  closeChatFilesModal(): void {
+    this.chatFilesModalOpen.set(false);
+    this.chatFilesLoading.set(false);
+    this.chatFilesError.set(null);
+    this.chatAttachments.set([]);
+    this.deletingChatAttachmentId.set(null);
+  }
+
+  downloadChatAttachment(attachment: WorkspaceChatAttachmentSummary): void {
+    this.downloadAttachment({
+      id: attachment.id,
+      filename: attachment.filename,
+      mime_type: attachment.mime_type,
+      size_bytes: attachment.size_bytes,
+      created_at: attachment.created_at,
+      deleted_at: null,
+    });
+  }
+
+  canDeleteChatAttachment(attachment: WorkspaceChatAttachmentSummary): boolean {
+    return attachment.author.id === this.currentUser()?.id;
+  }
+
+  isDeletingChatAttachment(attachmentId: string): boolean {
+    return this.deletingChatAttachmentId() === attachmentId;
+  }
+
+  deleteChatAttachment(attachment: WorkspaceChatAttachmentSummary): void {
+    const token = this.session()?.access_token;
+    if (!token || !this.canDeleteChatAttachment(attachment) || this.isDeletingChatAttachment(attachment.id)) {
+      return;
+    }
+
+    this.deletingChatAttachmentId.set(attachment.id);
+    this.chatFilesError.set(null);
+    this.deleteChatAttachmentTrigger$.next({ token, attachment });
   }
 
   submitAddGroupMember(): void {
@@ -3140,12 +3261,21 @@ export class AppComponent {
       return;
     }
 
+    if (attachment.deleted_at) {
+      this.messageError.set('Файл удален');
+      return;
+    }
+
     this.downloadingAttachmentIds.update((ids) => (ids.includes(attachment.id) ? ids : [...ids, attachment.id]));
     this.downloadAttachmentTrigger$.next({ token, attachment });
   }
 
   isAttachmentDownloading(attachment: WorkspaceMessageAttachment): boolean {
     return this.downloadingAttachmentIds().includes(attachment.id);
+  }
+
+  isChatAttachmentDownloading(attachmentId: string): boolean {
+    return this.downloadingAttachmentIds().includes(attachmentId);
   }
 
   async joinActiveVoiceChannel(): Promise<void> {
@@ -3436,6 +3566,7 @@ export class AppComponent {
   async selectChannel(channel: WorkspaceChannel): Promise<void> {
     this.schedulePresenceHeartbeat();
     this.closeMobilePanel();
+    this.closeChatFilesModal();
     this.selectedChannelId.set(channel.id);
     this.workspaceError.set(null);
     this.messageError.set(null);
@@ -3545,6 +3676,10 @@ export class AppComponent {
   }
 
   isInlineImageAttachment(attachment: WorkspaceMessageAttachment): boolean {
+    if (attachment.deleted_at) {
+      return false;
+    }
+
     if (attachment.size_bytes > MAX_INLINE_IMAGE_SIZE_BYTES) {
       return false;
     }
@@ -3566,6 +3701,10 @@ export class AppComponent {
   }
 
   isInlineAudioAttachment(attachment: WorkspaceMessageAttachment): boolean {
+    if (attachment.deleted_at) {
+      return false;
+    }
+
     const mimeType = attachment.mime_type.toLowerCase();
     if (mimeType === 'audio/mpeg' || mimeType === 'audio/mp3' || mimeType === 'audio/x-mpeg') {
       return true;
@@ -3579,6 +3718,11 @@ export class AppComponent {
   }
 
   openImageAttachment(attachment: WorkspaceMessageAttachment): void {
+    if (attachment.deleted_at) {
+      this.messageError.set('Файл удален');
+      return;
+    }
+
     const previewUrl = this.imagePreviewUrl(attachment);
     if (previewUrl) {
       this.openedImageAttachmentId.set(
@@ -3591,6 +3735,11 @@ export class AppComponent {
   }
 
   loadAudioAttachment(attachment: WorkspaceMessageAttachment): void {
+    if (attachment.deleted_at) {
+      this.messageError.set('Файл удален');
+      return;
+    }
+
     this.requestAttachmentPreview(attachment);
   }
 
@@ -4049,6 +4198,9 @@ export class AppComponent {
       case 'message_read_updated':
         this.handleMessageReadUpdatedEvent(event);
         return;
+      case 'attachment_deleted':
+        this.handleAttachmentDeletedEvent(event);
+        return;
       case 'channels_updated':
         this.handleChannelsUpdatedEvent(event);
         return;
@@ -4179,6 +4331,15 @@ export class AppComponent {
     }
 
     this.applyMessageReactionSnapshot(event.snapshot, true);
+  }
+
+  private handleAttachmentDeletedEvent(event: AppAttachmentDeletedEvent): void {
+    if (event.server_id !== this.selectedServerId()) {
+      return;
+    }
+
+    this.chatAttachments.update((items) => items.filter((item) => item.id !== event.attachment_id));
+    this.applyAttachmentDeletedLocally(event.attachment_id);
   }
 
   private handleMessageReadUpdatedEvent(event: AppMessageReadUpdatedEvent): void {
@@ -4701,6 +4862,7 @@ export class AppComponent {
     this.selectedChannelId.set(null);
     this.groupMembersModalOpen.set(false);
     this.groupVoiceParticipantsExpanded.set(false);
+    this.closeChatFilesModal();
     this.selectedMemberUserId.set(null);
     this.selectedVoiceMemberChannelId.set(null);
     this.voicePresence.set([]);
@@ -4935,6 +5097,10 @@ export class AppComponent {
       return;
     }
 
+    if (attachment.deleted_at) {
+      return;
+    }
+
     if (this.attachmentPreviewUrl(attachment)) {
       if (options?.openImageAfterLoad) {
         this.openedImageAttachmentId.set(
@@ -5084,7 +5250,56 @@ export class AppComponent {
     this.messageDraft.set('');
     this.pendingFiles.set([]);
     this.messageError.set(null);
+    this.chatFilesModalOpen.set(false);
+    this.chatFilesLoading.set(false);
+    this.chatFilesError.set(null);
+    this.chatAttachments.set([]);
+    this.deletingChatAttachmentId.set(null);
     this.scheduleMessageTextareaResize();
+  }
+
+  private applyAttachmentDeletedLocally(attachmentId: string): void {
+    this.downloadingAttachmentIds.update((ids) => ids.filter((id) => id !== attachmentId));
+    this.loadingAttachmentPreviewIds.delete(attachmentId);
+
+    const currentPreviewUrl = this.attachmentPreviewUrls()[attachmentId];
+    if (currentPreviewUrl) {
+      URL.revokeObjectURL(currentPreviewUrl);
+      this.attachmentPreviewUrls.update((currentUrls) => {
+        const nextUrls = { ...currentUrls };
+        delete nextUrls[attachmentId];
+        return nextUrls;
+      });
+    }
+
+    if (this.openedImageAttachmentId() === attachmentId) {
+      this.openedImageAttachmentId.set(null);
+    }
+
+    const deletedAt = new Date().toISOString();
+    this.messages.update((messages) =>
+      messages.map((message) => {
+        let changed = false;
+        const nextAttachments = message.attachments.map((attachment) => {
+          if (attachment.id !== attachmentId || attachment.deleted_at) {
+            return attachment;
+          }
+
+          changed = true;
+          return {
+            ...attachment,
+            deleted_at: deletedAt,
+          };
+        });
+
+        return changed
+          ? {
+              ...message,
+              attachments: nextAttachments,
+            }
+          : message;
+      })
+    );
   }
 
   private mergeMessagesChronologically(messages: WorkspaceMessage[]): WorkspaceMessage[] {

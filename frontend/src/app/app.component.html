@@ -315,6 +315,11 @@
             </div>
 
             <div class="conversation-head__actions">
+              @if (canUseActiveChannelChat()) {
+                <button class="secondary-button conversation-head__action conversation-head__action--icon" type="button" aria-label="Файлы чата" title="Файлы чата" (click)="openChatFilesModal()">
+                  <img src="/assets/Uploaded_sheet_files.svg" alt="" />
+                </button>
+              }
               @if (isChatsMode() && activeDirectPeer()) {
                 <button class="secondary-button conversation-head__action" type="button" (click)="openActiveDirectPeerCall()">
                   <img src="/assets/Phone_connect.svg" alt="" />
@@ -446,7 +451,14 @@
                           @if (message.attachments.length) {
                             <div class="message-attachments">
                               @for (attachment of message.attachments; track attachment.id) {
-                                @if (isInlineImageAttachment(attachment)) {
+                                @if (attachment.deleted_at) {
+                                  <div class="attachment-chip attachment-chip--deleted">
+                                    <div class="attachment-chip__copy">
+                                      <strong>{{ attachment.filename }}</strong>
+                                      <small>Файл удален</small>
+                                    </div>
+                                  </div>
+                                } @else if (isInlineImageAttachment(attachment)) {
                                   @if (imagePreviewUrl(attachment); as previewUrl) {
                                     <div class="attachment-preview">
                                       <button
@@ -968,6 +980,73 @@
         <button class="primary-button" type="button" [disabled]="!canSubmitProfile()" (click)="submitProfileChanges()">
           {{ profileSaving() ? 'Сохраняем...' : 'Сохранить' }}
         </button>
+      </div>
+    </section>
+  </div>
+}
+
+@if (chatFilesModalOpen()) {
+  <div class="modal-backdrop" (click)="closeChatFilesModal()">
+    <section class="modal modal--compact modal--chat-files" (click)="$event.stopPropagation()">
+      <div class="modal__header">
+        <div>
+          <p class="eyebrow">Файлы чата</p>
+          <h3>{{ activeServer()?.name ?? 'Текущий чат' }}</h3>
+        </div>
+        <button class="icon-button" type="button" (click)="closeChatFilesModal()">×</button>
+      </div>
+
+      <div class="modal__body">
+        @if (chatFilesError()) {
+          <p class="modal-note modal-note--error">{{ chatFilesError() }}</p>
+        }
+
+        @if (chatFilesLoading()) {
+          <p class="modal-note">Загружаем файлы...</p>
+        } @else if (chatAttachments().length) {
+          <div class="chat-files-list">
+            @for (attachment of chatAttachments(); track attachment.id) {
+              <div class="chat-file-row">
+                <div class="chat-file-row__copy">
+                  <strong>{{ attachment.filename }}</strong>
+                  <small>
+                    {{ formatFileSize(attachment.size_bytes) }} · {{ displayNick(attachment.author.nick) }} · {{ formatMessageTime(attachment.created_at) }}
+                  </small>
+                </div>
+                <div class="chat-file-row__actions">
+                  <button
+                    class="attachment-download"
+                    type="button"
+                    [disabled]="isChatAttachmentDownloading(attachment.id)"
+                    title="Скачать файл"
+                    aria-label="Скачать файл"
+                    (click)="downloadChatAttachment(attachment)"
+                  >
+                    <img src="/assets/Download_circle.svg" alt="" />
+                  </button>
+                  @if (canDeleteChatAttachment(attachment)) {
+                    <button
+                      class="chat-file-row__delete"
+                      type="button"
+                      [disabled]="isDeletingChatAttachment(attachment.id)"
+                      title="Удалить файл"
+                      aria-label="Удалить файл"
+                      (click)="deleteChatAttachment(attachment)"
+                    >
+                      ×
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        } @else {
+          <p class="modal-note">В этом чате пока нет файлов.</p>
+        }
+      </div>
+
+      <div class="modal__actions">
+        <button class="secondary-button" type="button" (click)="closeChatFilesModal()">Закрыть</button>
       </div>
     </section>
   </div>

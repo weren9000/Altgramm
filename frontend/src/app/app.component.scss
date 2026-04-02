@@ -4442,7 +4442,7 @@ select {
 .app-header__sidebar-toggle {
   display: none;
   padding-inline: 16px;
-  border-radius: 999px;
+  border-radius: 14px;
 }
 
 .conversation-head__action img,
@@ -4709,6 +4709,96 @@ select {
   padding: 0;
   justify-content: center;
   border-radius: 12px;
+}
+
+.attachment-chip--deleted {
+  border-color: rgba(255, 111, 124, 0.16);
+  background: rgba(255, 111, 124, 0.06);
+}
+
+.attachment-chip--deleted strong {
+  color: rgba(242, 250, 247, 0.86);
+}
+
+.attachment-chip--deleted small {
+  color: rgba(255, 181, 189, 0.82);
+}
+
+.modal--chat-files {
+  max-width: 720px;
+}
+
+.chat-files-list {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.chat-file-row__copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.chat-file-row__copy strong,
+.chat-file-row__copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-file-row__copy strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.chat-file-row__copy small {
+  color: rgba(222, 236, 245, 0.6);
+  font-size: 0.74rem;
+}
+
+.chat-file-row__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-file-row__delete {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 111, 124, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 111, 124, 0.08);
+  color: #ffd8dc;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.chat-file-row__delete:hover:not(:disabled) {
+  border-color: rgba(255, 111, 124, 0.34);
+  background: rgba(255, 111, 124, 0.14);
+}
+
+.chat-file-row__delete:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .group-overview {

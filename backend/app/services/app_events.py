@@ -237,6 +237,19 @@ def build_message_read_updated_event(
     }
 
 
+def build_attachment_deleted_event(
+    server_id: UUID | str,
+    channel_id: UUID | str,
+    attachment_id: UUID | str,
+) -> dict[str, Any]:
+    return {
+        "type": "attachment_deleted",
+        "server_id": _normalize_user_id(server_id),
+        "channel_id": _normalize_user_id(channel_id),
+        "attachment_id": _normalize_user_id(attachment_id),
+    }
+
+
 def build_servers_changed_event(*, reason: str) -> dict[str, Any]:
     return {
         "type": "servers_changed",
@@ -344,6 +357,17 @@ async def publish_message_read_updated(
     await app_event_manager.send_to_server(
         server_id,
         build_message_read_updated_event(server_id, channel_id, state),
+    )
+
+
+async def publish_attachment_deleted(
+    server_id: UUID | str,
+    channel_id: UUID | str,
+    attachment_id: UUID | str,
+) -> None:
+    await app_event_manager.send_to_server(
+        server_id,
+        build_attachment_deleted_event(server_id, channel_id, attachment_id),
     )
 
 
