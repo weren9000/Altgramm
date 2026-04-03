@@ -45,6 +45,7 @@ from app.services.app_events import (
     publish_message_created,
     publish_message_read_updated,
     publish_message_reactions_updated,
+    publish_servers_changed_for_users,
 )
 from app.services.attachment_storage import (
     AttachmentTooLargeError,
@@ -661,6 +662,7 @@ async def mark_channel_read(
             channel.id,
             _build_channel_read_event_payload(refreshed_state, current_user),
         )
+        await publish_servers_changed_for_users([current_user.id], reason="message_read")
 
     return _build_channel_read_state_summary(refreshed_state)
 

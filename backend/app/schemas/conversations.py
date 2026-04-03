@@ -25,6 +25,7 @@ class ConversationSummary(BaseModel):
     icon_updated_at: datetime | None = None
     member_role: str
     primary_channel_id: UUID
+    unread_count: int = 0
     members: list[ConversationMemberPreview] = Field(default_factory=list)
 
 

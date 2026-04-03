@@ -4495,7 +4495,6 @@ select {
 
 .app-header__start {
   min-width: 0;
-  position: relative;
 }
 
 .app-header__menu {
@@ -4525,7 +4524,7 @@ select {
   object-fit: contain;
 }
 
-.app-header__quick-add {
+.conversation-sidebar__quick-add {
   min-width: 38px;
   width: 38px;
   min-height: 38px;
@@ -4537,8 +4536,8 @@ select {
 
 .quick-create-menu {
   position: absolute;
-  top: calc(100% + 10px);
-  left: 0;
+  top: calc(100% + 8px);
+  left: 10px;
   z-index: 35;
   min-width: 220px;
   padding: 8px;
@@ -4606,10 +4605,11 @@ select {
 
 .conversation-sidebar__tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: auto repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 6px;
   padding: 10px 10px 8px;
+  position: relative;
 }
 
 .mobile-mode-footer {
@@ -4700,6 +4700,13 @@ select {
   min-width: 0;
 }
 
+.sidebar-entry__headline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .sidebar-entry__copy strong,
 .sidebar-entry__copy small {
   display: block;
@@ -4709,6 +4716,8 @@ select {
 }
 
 .sidebar-entry__copy strong {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 12px;
   font-weight: 700;
 }
@@ -4717,6 +4726,22 @@ select {
   margin-top: 2px;
   color: rgba(222, 236, 245, 0.58);
   font-size: 10px;
+}
+
+.sidebar-entry__unread-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(157, 253, 56, 0.18);
+  color: #f6ffd9;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .sidebar-empty {
@@ -5323,6 +5348,15 @@ select {
 .group-voice-roster__state-button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.group-voice-roster__state-shell {
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .group-voice-roster__state {

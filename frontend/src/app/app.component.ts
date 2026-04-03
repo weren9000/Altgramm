@@ -2956,6 +2956,7 @@ export class AppComponent {
       return;
     }
 
+    this.closeQuickCreateMenu();
     this.closeConversationActionMenu();
     this.closeGroupOwnershipModal();
     this.workspaceMode.set(mode);
@@ -4214,7 +4215,18 @@ export class AppComponent {
   }
 
   setGroupVoiceParticipantVolume(participant: VoiceParticipant, value: number | string): void {
+    if (participant.is_self) {
+      return;
+    }
     this.voiceRoom.updateParticipantVolume(participant.user_id, this.toRangeValue(value));
+  }
+
+  groupVoiceSelfStatusLabel(participant: VoiceParticipant): string {
+    if (this.isGroupVoiceParticipantGloballyMuted(participant)) {
+      return 'Вы заглушили свой микрофон';
+    }
+
+    return participant.speaking ? 'Ваш голос сейчас слышно' : 'Ваш микрофон включен';
   }
 
   voiceParticipantTone(participant: VoiceParticipant): VoicePresenceTone {
@@ -4230,7 +4242,11 @@ export class AppComponent {
   }
 
   groupVoiceStateIconPath(participant: VoiceParticipant): string {
-    if (participant.owner_muted || participant.muted) {
+    if (this.isGroupVoiceParticipantGloballyMuted(participant)) {
+      return '/assets/mic_block.svg';
+    }
+
+    if (!participant.is_self && this.isGroupVoiceParticipantLocallyMuted(participant)) {
       return '/assets/mic_off.svg';
     }
 
@@ -4242,12 +4258,12 @@ export class AppComponent {
   }
 
   groupVoiceStateIconAlt(participant: VoiceParticipant): string {
-    if (participant.owner_muted) {
-      return participant.is_self ? 'Ваш микрофон отключен' : 'Пользователь замучен';
+    if (this.isGroupVoiceParticipantGloballyMuted(participant)) {
+      return participant.is_self ? 'Ваш микрофон заглушен' : 'Пользователь заглушил свой микрофон';
     }
 
-    if (participant.muted) {
-      return participant.is_self ? 'Ваш микрофон выключен' : 'Пользователь выключил микрофон';
+    if (!participant.is_self && this.isGroupVoiceParticipantLocallyMuted(participant)) {
+      return 'Вы выключили громкость этого участника';
     }
 
     if (participant.speaking) {
@@ -4258,19 +4274,13 @@ export class AppComponent {
   }
 
   canToggleGroupVoiceParticipantMute(participant: VoiceParticipant): boolean {
-    if (participant.is_self) {
-      return this.connectedVoiceChannelId() === this.activeGroupVoiceChannel()?.id;
-    }
-
-    return this.canManageActiveGroup() && this.activeGroupVoiceChannel() !== null;
+    return participant.is_self && this.connectedVoiceChannelId() === this.activeGroupVoiceChannel()?.id;
   }
 
   groupVoiceStateActionLabel(participant: VoiceParticipant): string {
-    if (participant.is_self) {
-      return participant.muted ? 'Включить микрофон' : 'Выключить микрофон';
-    }
-
-    return participant.owner_muted ? 'Снять mute с участника' : 'Замутить участника';
+    return this.isGroupVoiceParticipantGloballyMuted(participant)
+      ? 'Включить микрофон'
+      : 'Заглушить свой микрофон';
   }
 
   toggleGroupVoiceParticipantMute(participant: VoiceParticipant): void {
@@ -4278,22 +4288,19 @@ export class AppComponent {
       return;
     }
 
+    this.toggleVoiceMute();
+  }
+
+  private isGroupVoiceParticipantGloballyMuted(participant: VoiceParticipant): boolean {
     if (participant.is_self) {
-      this.toggleVoiceMute();
-      return;
+      return this.voiceMuted() || this.voiceOwnerMuted();
     }
 
-    const token = this.session()?.access_token;
-    const channelId = this.activeGroupVoiceChannel()?.id ?? null;
-    const member = this.groupMembers().find((entry) => entry.userId === participant.user_id);
-    if (!token || !channelId || !member) {
-      return;
-    }
+    return participant.owner_muted || participant.muted;
+  }
 
-    const nextOwnerMuted = !participant.owner_muted;
-    this.voiceOwnerActionLoading.set(true);
-    this.managementError.set(null);
-    this.voiceMemberOwnerMuteTrigger$.next({ token, channelId, member, nextOwnerMuted });
+  private isGroupVoiceParticipantLocallyMuted(participant: VoiceParticipant): boolean {
+    return !participant.is_self && this.groupVoiceParticipantVolume(participant) <= 0;
   }
 
   voiceStateIconPath(participant: VoiceParticipant): string {
@@ -5013,6 +5020,11 @@ export class AppComponent {
 
     if (event.message.author.id !== this.currentUser()?.id && isNearBottom) {
       this.markChannelAsRead(event.message.channel_id, event.message.id);
+      return;
+    }
+
+    if (event.message.author.id !== this.currentUser()?.id) {
+      this.bumpConversationUnreadCount(event.server_id);
     }
   }
 
@@ -5040,6 +5052,9 @@ export class AppComponent {
 
     const readerId = event.state.user_id;
     const currentUserId = this.currentUser()?.id;
+    if (readerId === currentUserId) {
+      this.setConversationUnreadCountByChannelId(event.channel_id, 0);
+    }
     this.messages.update((messages) =>
       messages.map((message) => {
         const withoutReader = message.read_by.filter((reader) => reader.id !== readerId);
@@ -6140,6 +6155,7 @@ export class AppComponent {
     }
 
     this.lastMarkedReadMessageIdByChannel.set(channelId, lastMessageId);
+    this.setConversationUnreadCountByChannelId(channelId, 0);
     this.markChannelReadTrigger$.next({ token, channelId, lastMessageId });
   }
 
@@ -6807,6 +6823,15 @@ export class AppComponent {
     return conversation.subtitle ?? 'Сообщений пока нет';
   }
 
+  conversationUnreadCount(conversation: ConversationSummary): number {
+    return Math.max(0, conversation.unread_count ?? 0);
+  }
+
+  conversationUnreadBadgeLabel(conversation: ConversationSummary): string {
+    const unreadCount = this.conversationUnreadCount(conversation);
+    return unreadCount > 99 ? '99+' : String(unreadCount);
+  }
+
   activeSpaceMetaLabel(): string {
     if (this.isChatsMode()) {
       const peer = this.activeDirectPeer();
@@ -6856,6 +6881,51 @@ export class AppComponent {
 
   groupConversationById(conversationId: string): ConversationSummary | null {
     return this.groupConversations().find((conversation) => conversation.id === conversationId) ?? null;
+  }
+
+  private setConversationUnreadCount(serverId: string, unreadCount: number): void {
+    const normalizedUnreadCount = Math.max(0, unreadCount);
+    this.conversations.update((conversations) =>
+      conversations.map((conversation) =>
+        conversation.id === serverId
+          ? {
+              ...conversation,
+              unread_count: normalizedUnreadCount,
+            }
+          : conversation
+      )
+    );
+  }
+
+  private setConversationUnreadCountByChannelId(channelId: string, unreadCount: number): void {
+    const normalizedUnreadCount = Math.max(0, unreadCount);
+    this.conversations.update((conversations) =>
+      conversations.map((conversation) =>
+        conversation.primary_channel_id === channelId
+          ? {
+              ...conversation,
+              unread_count: normalizedUnreadCount,
+            }
+          : conversation
+      )
+    );
+  }
+
+  private bumpConversationUnreadCount(serverId: string, delta = 1): void {
+    if (!delta) {
+      return;
+    }
+
+    this.conversations.update((conversations) =>
+      conversations.map((conversation) =>
+        conversation.id === serverId
+          ? {
+              ...conversation,
+              unread_count: Math.max(0, (conversation.unread_count ?? 0) + delta),
+            }
+          : conversation
+      )
+    );
   }
 
   activeConversationIconUrl(): string | null {

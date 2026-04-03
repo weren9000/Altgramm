@@ -17,6 +17,7 @@ export interface ConversationSummary {
   icon_updated_at: string | null;
   member_role: string;
   primary_channel_id: string;
+  unread_count: number;
   members: ConversationMemberPreview[];
 }
 

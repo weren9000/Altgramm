@@ -125,20 +125,6 @@
         <button class="icon-button app-header__menu" type="button" aria-label="Открыть меню" title="Открыть меню" (click)="toggleSideMenu()">
           <img class="app-header__menu-art" src="/assets/burger_menu.png" alt="" />
         </button>
-        <button class="secondary-button app-header__quick-add" type="button" aria-label="Создать или добавить" title="Создать или добавить" (click)="toggleQuickCreateMenu()">
-          +
-        </button>
-        @if (quickCreateMenuOpen()) {
-          <button class="floating-menu-backdrop" type="button" aria-label="Закрыть меню создания" (click)="closeQuickCreateMenu()"></button>
-          <div class="quick-create-menu">
-            <button class="quick-create-menu__item" type="button" (click)="openAddUserShortcut()">
-              Добавить друга по ID
-            </button>
-            <button class="quick-create-menu__item" type="button" (click)="openCreateGroupShortcut()">
-              Создать группу
-            </button>
-          </div>
-        }
       </div>
 
       <div class="app-header__actions">
@@ -234,6 +220,20 @@
     <div class="messenger-layout">
       <aside class="conversation-sidebar" [class.conversation-sidebar--mobile-open]="mobilePanel() === 'servers'">
         <div class="conversation-sidebar__tabs">
+          <button class="secondary-button conversation-sidebar__quick-add" type="button" aria-label="Создать или добавить" title="Создать или добавить" (click)="toggleQuickCreateMenu()">
+            +
+          </button>
+          @if (quickCreateMenuOpen()) {
+            <button class="floating-menu-backdrop" type="button" aria-label="Закрыть меню создания" (click)="closeQuickCreateMenu()"></button>
+            <div class="quick-create-menu">
+              <button class="quick-create-menu__item" type="button" (click)="openAddUserShortcut()">
+                Добавить друга по ID
+              </button>
+              <button class="quick-create-menu__item" type="button" (click)="openCreateGroupShortcut()">
+                Создать группу
+              </button>
+            </div>
+          }
           <button
             class="conversation-sidebar__tab"
             [class.conversation-sidebar__tab--active]="isChatsMode()"
@@ -271,7 +271,12 @@
                       }
                     </div>
                     <div class="sidebar-entry__copy">
-                      <strong>{{ conversation.title }}</strong>
+                      <div class="sidebar-entry__headline">
+                        <strong>{{ conversation.title }}</strong>
+                        @if (conversationUnreadCount(conversation) > 0) {
+                          <span class="sidebar-entry__unread-badge">{{ conversationUnreadBadgeLabel(conversation) }}</span>
+                        }
+                      </div>
                       <small>{{ conversationMetaLabel(conversation) }}</small>
                     </div>
                   </button>
@@ -298,7 +303,12 @@
                       }
                     </div>
                     <div class="sidebar-entry__copy">
-                      <strong>{{ conversation.title }}</strong>
+                      <div class="sidebar-entry__headline">
+                        <strong>{{ conversation.title }}</strong>
+                        @if (conversationUnreadCount(conversation) > 0) {
+                          <span class="sidebar-entry__unread-badge">{{ conversationUnreadBadgeLabel(conversation) }}</span>
+                        }
+                      </div>
                       <small>{{ conversationMetaLabel(conversation) }}</small>
                     </div>
                   </button>
@@ -447,34 +457,47 @@
                           </div>
                           <div class="group-voice-roster__copy">
                             <strong>{{ displayNick(participant.nick) }}</strong>
-                            <div class="group-voice-roster__controls">
-                              <input
-                                class="group-voice-roster__volume"
-                                type="range"
-                                min="0"
-                                max="200"
-                                step="1"
-                                [value]="groupVoiceParticipantVolume(participant)"
-                                [attr.aria-label]="'Громкость ' + displayNick(participant.nick)"
-                                (input)="setGroupVoiceParticipantVolume(participant, $any($event.target).value)"
-                              />
-                              <small>{{ groupVoiceParticipantVolume(participant) }}%</small>
-                            </div>
+                            @if (participant.is_self) {
+                              <small>{{ groupVoiceSelfStatusLabel(participant) }}</small>
+                            } @else {
+                              <div class="group-voice-roster__controls">
+                                <input
+                                  class="group-voice-roster__volume"
+                                  type="range"
+                                  min="0"
+                                  max="200"
+                                  step="1"
+                                  [value]="groupVoiceParticipantVolume(participant)"
+                                  [attr.aria-label]="'Громкость ' + displayNick(participant.nick)"
+                                  (input)="setGroupVoiceParticipantVolume(participant, $any($event.target).value)"
+                                />
+                                <small>{{ groupVoiceParticipantVolume(participant) }}%</small>
+                              </div>
+                            }
                           </div>
-                          <button
-                            class="group-voice-roster__state-button"
-                            type="button"
-                            [disabled]="!canToggleGroupVoiceParticipantMute(participant)"
-                            [attr.title]="groupVoiceStateActionLabel(participant)"
-                            [attr.aria-label]="groupVoiceStateActionLabel(participant)"
-                            (click)="toggleGroupVoiceParticipantMute(participant)"
-                          >
-                            <img
-                              class="group-voice-roster__state"
-                              [src]="groupVoiceStateIconPath(participant)"
-                              [alt]="groupVoiceStateIconAlt(participant)"
-                            />
-                          </button>
+                          @if (participant.is_self) {
+                            <button
+                              class="group-voice-roster__state-button"
+                              type="button"
+                              [attr.title]="groupVoiceStateActionLabel(participant)"
+                              [attr.aria-label]="groupVoiceStateActionLabel(participant)"
+                              (click)="toggleGroupVoiceParticipantMute(participant)"
+                            >
+                              <img
+                                class="group-voice-roster__state"
+                                [src]="groupVoiceStateIconPath(participant)"
+                                [alt]="groupVoiceStateIconAlt(participant)"
+                              />
+                            </button>
+                          } @else {
+                            <span class="group-voice-roster__state-shell" [attr.title]="groupVoiceStateIconAlt(participant)">
+                              <img
+                                class="group-voice-roster__state"
+                                [src]="groupVoiceStateIconPath(participant)"
+                                [alt]="groupVoiceStateIconAlt(participant)"
+                              />
+                            </span>
+                          }
                         </div>
                       }
                     } @else {

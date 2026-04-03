@@ -342,7 +342,26 @@ async def publish_presence_updated(user_id: UUID | str, is_online: bool = True) 
 
 
 async def publish_message_created(server_id: UUID | str, message: dict[str, Any]) -> None:
-    await app_event_manager.send_to_server(server_id, build_message_created_event(server_id, message))
+    normalized_server_id = _normalize_server_id(server_id)
+    if normalized_server_id is None:
+        return
+
+    await app_event_manager.send_to_server(normalized_server_id, build_message_created_event(normalized_server_id, message))
+    subscriber_user_ids = await app_event_manager.get_server_subscriber_user_ids(normalized_server_id)
+
+    with SessionLocal() as db:
+        member_user_ids = db.execute(
+            select(ServerMember.user_id).where(ServerMember.server_id == UUID(normalized_server_id))
+        ).scalars().all()
+
+    passive_member_user_ids = [
+        user_id for user_id in member_user_ids if _normalize_user_id(user_id) not in subscriber_user_ids
+    ]
+    if passive_member_user_ids:
+        await app_event_manager.send_to_users(
+            passive_member_user_ids,
+            build_servers_changed_event(reason="message_created"),
+        )
 
 
 async def publish_message_reactions_updated(
@@ -380,6 +399,10 @@ async def publish_attachment_deleted(
 
 async def publish_servers_changed(reason: str) -> None:
     await app_event_manager.broadcast(build_servers_changed_event(reason=reason))
+
+
+async def publish_servers_changed_for_users(user_ids: Iterable[UUID | str], reason: str) -> None:
+    await app_event_manager.send_to_users(user_ids, build_servers_changed_event(reason=reason))
 
 
 async def publish_channels_updated(server_id: UUID | str, reason: str) -> None:
@@ -500,6 +523,10 @@ def publish_presence_updated_from_sync(user_id: UUID | str, *, is_online: bool =
 
 def publish_servers_changed_from_sync(*, reason: str) -> None:
     _run_async_or_schedule(publish_servers_changed, reason)
+
+
+def publish_servers_changed_for_users_from_sync(user_ids: Iterable[UUID | str], *, reason: str) -> None:
+    _run_async_or_schedule(publish_servers_changed_for_users, list(user_ids), reason)
 
 
 def publish_channels_updated_from_sync(server_id: UUID | str, *, reason: str) -> None:
