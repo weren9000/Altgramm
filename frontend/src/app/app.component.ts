@@ -1029,7 +1029,6 @@ export class AppComponent {
         return this.displayNick(left.nick).localeCompare(this.displayNick(right.nick), 'ru');
       });
   });
-  readonly activeSpaceListTitle = computed(() => this.isChatsMode() ? 'Друзья' : 'Групповые');
   readonly currentUserAvatarUrl = computed(() =>
     this.buildUserAvatarUrl(this.currentUser()?.id ?? null, this.currentUser()?.avatar_updated_at ?? null)
   );
@@ -2963,6 +2962,13 @@ export class AppComponent {
         this.voicePresence.set([]);
         this.resetTextChannelState();
       }
+    }
+  }
+
+  openMobileWorkspaceMode(mode: WorkspaceMode): void {
+    this.selectWorkspaceMode(mode);
+    if (this.isCompactVoiceWorkspaceViewport()) {
+      this.mobilePanel.set('servers');
     }
   }
 
