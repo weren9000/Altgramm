@@ -652,6 +652,7 @@ export class AppComponent {
   readonly groupMembersModalOpen = signal(false);
   readonly groupVoiceParticipantsExpanded = signal(false);
   readonly sideMenuOpen = signal(false);
+  readonly quickCreateMenuOpen = signal(false);
   readonly conversationActionMenuOpen = signal(false);
   readonly pendingGroupOwnershipAction = signal<'leave' | 'block' | null>(null);
   readonly groupOwnershipModalOpen = signal(false);
@@ -2623,6 +2624,7 @@ export class AppComponent {
   }
 
   toggleSideMenu(): void {
+    this.closeQuickCreateMenu();
     this.sideMenuOpen.set(!this.sideMenuOpen());
   }
 
@@ -2630,12 +2632,22 @@ export class AppComponent {
     this.sideMenuOpen.set(false);
   }
 
+  toggleQuickCreateMenu(): void {
+    this.quickCreateMenuOpen.update((opened) => !opened);
+  }
+
+  closeQuickCreateMenu(): void {
+    this.quickCreateMenuOpen.set(false);
+  }
+
   openCreateGroupShortcut(): void {
+    this.closeQuickCreateMenu();
     this.closeSideMenu();
     this.openCreateGroupModal();
   }
 
   openAddUserShortcut(): void {
+    this.closeQuickCreateMenu();
     this.closeSideMenu();
     this.directDirectoryQuery.set('');
     this.openCreateConversationModal('direct');
@@ -4058,6 +4070,7 @@ export class AppComponent {
     this.blockedServersModalOpen.set(false);
     this.groupMembersModalOpen.set(false);
     this.groupOwnershipModalOpen.set(false);
+    this.quickCreateMenuOpen.set(false);
     this.conversationActionMenuOpen.set(false);
     this.selectedMemberUserId.set(null);
     this.selectedVoiceMemberChannelId.set(null);
@@ -4196,6 +4209,14 @@ export class AppComponent {
     return this.serverVoicePresenceByChannelId().get(channelId) ?? [];
   }
 
+  groupVoiceParticipantVolume(participant: VoiceParticipant): number {
+    return this.voiceRoom.getParticipantVolume(participant.user_id);
+  }
+
+  setGroupVoiceParticipantVolume(participant: VoiceParticipant, value: number | string): void {
+    this.voiceRoom.updateParticipantVolume(participant.user_id, this.toRangeValue(value));
+  }
+
   voiceParticipantTone(participant: VoiceParticipant): VoicePresenceTone {
     if (participant.owner_muted) {
       return 'blocked';
@@ -4206,6 +4227,73 @@ export class AppComponent {
     }
 
     return participant.speaking ? 'speaking' : 'open';
+  }
+
+  groupVoiceStateIconPath(participant: VoiceParticipant): string {
+    if (participant.owner_muted || participant.muted) {
+      return '/assets/mic_off.svg';
+    }
+
+    if (participant.speaking) {
+      return '/assets/mic_voice.svg';
+    }
+
+    return '/assets/mic.svg';
+  }
+
+  groupVoiceStateIconAlt(participant: VoiceParticipant): string {
+    if (participant.owner_muted) {
+      return participant.is_self ? 'Ваш микрофон отключен' : 'Пользователь замучен';
+    }
+
+    if (participant.muted) {
+      return participant.is_self ? 'Ваш микрофон выключен' : 'Пользователь выключил микрофон';
+    }
+
+    if (participant.speaking) {
+      return 'Пользователь говорит';
+    }
+
+    return 'Микрофон активен';
+  }
+
+  canToggleGroupVoiceParticipantMute(participant: VoiceParticipant): boolean {
+    if (participant.is_self) {
+      return this.connectedVoiceChannelId() === this.activeGroupVoiceChannel()?.id;
+    }
+
+    return this.canManageActiveGroup() && this.activeGroupVoiceChannel() !== null;
+  }
+
+  groupVoiceStateActionLabel(participant: VoiceParticipant): string {
+    if (participant.is_self) {
+      return participant.muted ? 'Включить микрофон' : 'Выключить микрофон';
+    }
+
+    return participant.owner_muted ? 'Снять mute с участника' : 'Замутить участника';
+  }
+
+  toggleGroupVoiceParticipantMute(participant: VoiceParticipant): void {
+    if (!this.canToggleGroupVoiceParticipantMute(participant)) {
+      return;
+    }
+
+    if (participant.is_self) {
+      this.toggleVoiceMute();
+      return;
+    }
+
+    const token = this.session()?.access_token;
+    const channelId = this.activeGroupVoiceChannel()?.id ?? null;
+    const member = this.groupMembers().find((entry) => entry.userId === participant.user_id);
+    if (!token || !channelId || !member) {
+      return;
+    }
+
+    const nextOwnerMuted = !participant.owner_muted;
+    this.voiceOwnerActionLoading.set(true);
+    this.managementError.set(null);
+    this.voiceMemberOwnerMuteTrigger$.next({ token, channelId, member, nextOwnerMuted });
   }
 
   voiceStateIconPath(participant: VoiceParticipant): string {

@@ -2336,6 +2336,10 @@ select {
   cursor: pointer;
 }
 
+.message-card__action--reply {
+  margin-left: auto;
+}
+
 .message-card__read-receipt {
   font-size: 0.68rem;
   color: rgba(111, 255, 191, 0.78);
@@ -3876,8 +3880,8 @@ select {
   right: -12px;
   width: 36px;
   height: 36px;
-  border: 1px solid var(--line-strong);
-  background: rgba(12, 18, 26, 0.92);
+  border: 0;
+  background: transparent;
   color: var(--text);
   cursor: pointer;
 }
@@ -4491,6 +4495,7 @@ select {
 
 .app-header__start {
   min-width: 0;
+  position: relative;
 }
 
 .app-header__menu {
@@ -4518,6 +4523,47 @@ select {
   height: 34px;
   width: auto;
   object-fit: contain;
+}
+
+.app-header__quick-add {
+  min-width: 38px;
+  width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.quick-create-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 35;
+  min-width: 220px;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 18, 28, 0.98);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.36);
+}
+
+.quick-create-menu__item {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(242, 250, 247, 0.9);
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.quick-create-menu__item:hover:not(:disabled) {
+  background: rgba(81, 240, 168, 0.12);
 }
 
 .conversation-head__action img,
@@ -4688,10 +4734,10 @@ select {
 }
 
 .conversation-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
   padding: 10px 12px 9px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -4771,11 +4817,18 @@ select {
 
 .conversation-head__actions {
   display: inline-flex;
+  width: 100%;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow-x: auto;
+  scrollbar-width: none;
   position: relative;
+}
+
+.conversation-head__actions::-webkit-scrollbar {
+  display: none;
 }
 
 .conversation-head__action {
@@ -4851,6 +4904,19 @@ select {
 
 .conversation-action-menu__item--danger:hover:not(:disabled) {
   background: rgba(255, 111, 124, 0.14);
+}
+
+.modal__header .icon-button,
+.image-lightbox__close {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.modal__header .icon-button:hover:not(:disabled),
+.image-lightbox__close:hover:not(:disabled) {
+  border: 0;
+  background: transparent;
 }
 
 .conversation-action-menu__item:disabled {
@@ -5165,8 +5231,9 @@ select {
 }
 
 .group-voice-roster__member {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: start;
   gap: 10px;
   min-width: 0;
   padding: 8px 10px;
@@ -5197,9 +5264,8 @@ select {
 
 .group-voice-roster__copy {
   min-width: 0;
-  flex: 1;
   display: grid;
-  gap: 2px;
+  gap: 6px;
 }
 
 .group-voice-roster__copy strong,
@@ -5221,10 +5287,49 @@ select {
   font-size: 11px;
 }
 
+.group-voice-roster__controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-voice-roster__volume {
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  accent-color: #9dfd38;
+  cursor: pointer;
+}
+
+.group-voice-roster__volume + small {
+  min-width: 38px;
+  text-align: right;
+}
+
+.group-voice-roster__state-button {
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.group-voice-roster__state-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .group-voice-roster__state {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
+  object-fit: contain;
 }
 
 .conversation-stream {
@@ -5394,22 +5499,12 @@ select {
 
   .conversation-head {
     padding: 12px 12px 10px;
-    align-items: center;
-    flex-direction: row;
+    gap: 8px;
   }
 
   .conversation-head__actions {
-    width: auto;
-    min-width: max-content;
     gap: 4px;
-    flex-wrap: nowrap;
-    justify-content: flex-end;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .conversation-head__actions::-webkit-scrollbar {
-    display: none;
+    width: 100%;
   }
 
   .conversation-head__identity {
