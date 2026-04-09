@@ -183,6 +183,10 @@
             <span>+</span>
             <span>Создать группу</span>
           </button>
+          <button class="side-drawer__action" type="button" (click)="openCreatePlatformShortcut()">
+            <span>+</span>
+            <span>Создать площадку</span>
+          </button>
           <button class="side-drawer__action" type="button" (click)="openAddUserShortcut()">
             <span>+</span>
             <span>Добавить друга</span>
@@ -232,6 +236,9 @@
               <button class="quick-create-menu__item" type="button" (click)="openCreateGroupShortcut()">
                 Создать группу
               </button>
+              <button class="quick-create-menu__item" type="button" (click)="openCreatePlatformShortcut()">
+                Создать площадку
+              </button>
             </div>
           }
           <button
@@ -248,7 +255,15 @@
             type="button"
             (click)="selectWorkspaceMode('groups')"
           >
-            Групповые
+            Группы
+          </button>
+          <button
+            class="conversation-sidebar__tab"
+            [class.conversation-sidebar__tab--active]="isPlatformsMode()"
+            type="button"
+            (click)="selectWorkspaceMode('platforms')"
+          >
+            Площадка
           </button>
         </div>
 
@@ -285,7 +300,7 @@
             } @else {
               <div class="sidebar-empty">Друзей пока нет</div>
             }
-          } @else {
+          } @else if (isGroupsMode()) {
             @if (groupChatEntries().length) {
               @for (space of groupChatEntries(); track space.id) {
                 @if (activeConversation()?.id === space.id ? activeConversation() : groupConversationById(space.id); as conversation) {
@@ -317,6 +332,33 @@
             } @else {
               <div class="sidebar-empty">Групп пока нет</div>
             }
+          } @else {
+            @if (platformEntries().length) {
+              @for (space of platformEntries(); track space.id) {
+                <button
+                  class="sidebar-entry"
+                  [class.sidebar-entry--active]="space.id === selectedServerId()"
+                  type="button"
+                  (click)="selectServer(space.id)"
+                >
+                  <div class="sidebar-entry__avatar sidebar-entry__avatar--group">
+                    @if (resolveSpaceIconUrl(space.id, space.icon_asset, space.icon_updated_at); as iconUrl) {
+                      <img [src]="iconUrl" [alt]="space.name" loading="lazy" />
+                    } @else {
+                      <span>{{ displayNickInitials(space.name) }}</span>
+                    }
+                  </div>
+                  <div class="sidebar-entry__copy">
+                    <div class="sidebar-entry__headline">
+                      <strong>{{ space.name }}</strong>
+                    </div>
+                    <small>{{ platformMetaLabel(space) }}</small>
+                  </div>
+                </button>
+              }
+            } @else {
+              <div class="sidebar-empty">Площадок пока нет</div>
+            }
           }
         </div>
       </aside>
@@ -342,22 +384,22 @@
             <div class="conversation-head__identity">
               <button
                 class="conversation-head__avatar"
-                [class.conversation-head__avatar--group]="isGroupsMode()"
-                [class.conversation-head__avatar--editable]="isGroupsMode() && canEditActiveServerIcon()"
+                [class.conversation-head__avatar--group]="!isChatsMode()"
+                [class.conversation-head__avatar--editable]="!isChatsMode() && canEditActiveServerIcon()"
                 type="button"
-                [disabled]="!(isGroupsMode() && canEditActiveServerIcon()) || serverIconSaving()"
-                [attr.title]="isGroupsMode() && canEditActiveServerIcon() ? 'Загрузить иконку группы' : null"
-                [attr.aria-label]="isGroupsMode() && canEditActiveServerIcon() ? 'Загрузить иконку группы' : null"
-                (click)="isGroupsMode() && canEditActiveServerIcon() ? openServerIconPicker() : null"
+                [disabled]="!(!isChatsMode() && canEditActiveServerIcon()) || serverIconSaving()"
+                [attr.title]="!isChatsMode() && canEditActiveServerIcon() ? 'Загрузить иконку пространства' : null"
+                [attr.aria-label]="!isChatsMode() && canEditActiveServerIcon() ? 'Загрузить иконку пространства' : null"
+                (click)="!isChatsMode() && canEditActiveServerIcon() ? openServerIconPicker() : null"
               >
-                @if (activeConversationIconUrl(); as iconUrl) {
+                @if (activeSpaceIconUrl(); as iconUrl) {
                   <img [src]="iconUrl" [alt]="activeServer()?.name ?? ''" loading="lazy" />
                 } @else {
                   <span>{{ displayNickInitials(activeServer()?.name ?? 'KVA') }}</span>
                 }
               </button>
               <div class="conversation-head__copy">
-                <p class="eyebrow">{{ isChatsMode() ? 'Друг' : 'Группа' }}</p>
+                <p class="eyebrow">{{ activeSpaceKindLabel() }}</p>
                 <strong>{{ activeServer()?.name }}</strong>
                 <small>{{ activeSpaceMetaLabel() }}</small>
               </div>
@@ -381,12 +423,12 @@
                   <img src="/assets/Uploaded_sheet_files.svg" alt="" />
                 </button>
               }
-              @if (isGroupsMode()) {
+              @if (isGroupsMode() || isPlatformsMode()) {
                 <button class="secondary-button conversation-head__action conversation-head__action--icon" type="button" aria-label="Пользователи" title="Пользователи" (click)="openGroupMembersPanel()">
                   <img src="/assets/Group_fill.svg" alt="" />
                 </button>
               }
-              @if (isGroupsMode() && canManageActiveGroup()) {
+              @if ((isGroupsMode() || isPlatformsMode()) && canManageActiveGroup()) {
                 <button class="secondary-button conversation-head__action conversation-head__action--icon" type="button" aria-label="Добавить участника" title="Добавить участника" (click)="openAddGroupMemberModal()">
                   <img src="/assets/User_fill_add.svg" alt="" />
                 </button>
@@ -446,93 +488,161 @@
             />
           </section>
 
-          @if (isGroupsMode()) {
-            <section class="group-overview">
-              @if (activeGroupVoiceChannel(); as groupVoiceChannel) {
-                <div class="group-voice-card" [class.group-voice-card--active]="connectedVoiceChannelId() === groupVoiceChannel.id">
-                  <button
-                    class="group-voice-card__summary"
-                    type="button"
-                    [attr.aria-expanded]="groupVoiceParticipantsExpanded()"
-                    [attr.aria-label]="groupVoiceParticipantsExpanded() ? 'Скрыть активных участников голосового чата' : 'Показать активных участников голосового чата'"
-                    (click)="toggleGroupVoiceParticipantsExpanded()"
-                  >
-                    <div class="group-voice-card__copy">
-                      <strong>{{ groupVoiceChannel.name }}</strong>
-                      <small>Участников: {{ activeGroupVoiceParticipants().length }}</small>
-                    </div>
-                  </button>
-                  <button class="secondary-button group-voice-card__action" type="button" (click)="toggleActiveGroupVoice()">
-                    <img [src]="connectedVoiceChannelId() === groupVoiceChannel.id ? '/assets/Phone outgoing.svg' : '/assets/Phone_connect.svg'" alt="" />
-                  </button>
-                </div>
-                @if (groupVoiceParticipantsExpanded()) {
-                  <div class="group-voice-roster">
-                    @if (activeGroupVoiceParticipants().length) {
-                      @for (participant of activeGroupVoiceParticipants(); track participant.id) {
-                        <div class="group-voice-roster__member">
-                          <div class="group-voice-roster__avatar">
-                            @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
-                              <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
-                            } @else {
-                              <span>{{ displayNickInitials(participant.nick) }}</span>
-                            }
-                          </div>
-                          <div class="group-voice-roster__copy">
-                            <strong>{{ displayNick(participant.nick) }}</strong>
-                            @if (participant.is_self) {
-                              <small>{{ groupVoiceSelfStatusLabel(participant) }}</small>
-                            } @else {
-                              <div class="group-voice-roster__controls">
-                                <input
-                                  class="group-voice-roster__volume"
-                                  type="range"
-                                  min="0"
-                                  max="200"
-                                  step="1"
-                                  [value]="groupVoiceParticipantVolume(participant)"
-                                  [attr.aria-label]="'Громкость ' + displayNick(participant.nick)"
-                                  (input)="setGroupVoiceParticipantVolume(participant, $any($event.target).value)"
-                                />
-                                <small>{{ groupVoiceParticipantVolume(participant) }}%</small>
-                              </div>
-                            }
-                          </div>
-                          @if (participant.is_self) {
-                            <button
-                              class="group-voice-roster__state-button"
-                              type="button"
-                              [attr.title]="groupVoiceStateActionLabel(participant)"
-                              [attr.aria-label]="groupVoiceStateActionLabel(participant)"
-                              (click)="toggleGroupVoiceParticipantMute(participant)"
-                            >
-                              <img
-                                class="group-voice-roster__state"
-                                [src]="groupVoiceStateIconPath(participant)"
-                                [alt]="groupVoiceStateIconAlt(participant)"
-                              />
-                            </button>
-                          } @else {
-                            <span class="group-voice-roster__state-shell" [attr.title]="groupVoiceStateIconAlt(participant)">
-                              <img
-                                class="group-voice-roster__state"
-                                [src]="groupVoiceStateIconPath(participant)"
-                                [alt]="groupVoiceStateIconAlt(participant)"
-                              />
-                            </span>
-                          }
-                        </div>
-                      }
-                    } @else {
-                      <div class="group-voice-roster__empty">В голосовом чате пока никого нет</div>
+          <div class="workspace-content" [class.workspace-content--platform]="isPlatformsMode()">
+            @if (isPlatformsMode()) {
+              <aside class="platform-channel-rail">
+                <div class="platform-channel-section">
+                  <div class="platform-channel-section__head">
+                    <strong>Текстовые каналы</strong>
+                    @if (canManageActiveGroup()) {
+                      <button class="secondary-button platform-channel-section__add" type="button" (click)="openCreateChannelModal('text')">
+                        + Текстовый
+                      </button>
                     }
                   </div>
-                }
-              }
-            </section>
-          }
+                  <div class="platform-channel-list">
+                    @for (channel of textChannels(); track channel.id) {
+                      <button
+                        class="platform-channel-entry"
+                        [class.platform-channel-entry--active]="selectedChannelId() === channel.id"
+                        type="button"
+                        (click)="selectChannel(channel)"
+                      >
+                        <div class="platform-channel-entry__copy">
+                          <strong># {{ channel.name }}</strong>
+                          <small>{{ platformChannelMetaLabel(channel) }}</small>
+                        </div>
+                      </button>
+                    } @empty {
+                      <div class="rail-empty">Текстовых каналов пока нет</div>
+                    }
+                  </div>
+                </div>
 
-          <section class="conversation-stream">
+                <div class="platform-channel-section">
+                  <div class="platform-channel-section__head">
+                    <strong>Голосовые каналы</strong>
+                    @if (canManageActiveGroup()) {
+                      <button class="secondary-button platform-channel-section__add" type="button" (click)="openCreateChannelModal('voice')">
+                        + Голосовой
+                      </button>
+                    }
+                  </div>
+                  <div class="platform-channel-list">
+                    @for (channel of voiceChannels(); track channel.id) {
+                      <div class="platform-channel-entry platform-channel-entry--voice" [class.platform-channel-entry--active]="selectedChannelId() === channel.id">
+                        <button class="platform-channel-entry__main" type="button" (click)="selectChannel(channel)">
+                          <div class="platform-channel-entry__copy">
+                            <strong>{{ channel.name }}</strong>
+                            <small>{{ platformChannelMetaLabel(channel) }}</small>
+                          </div>
+                        </button>
+                        <button
+                          class="secondary-button platform-channel-entry__voice-action"
+                          type="button"
+                          [attr.aria-label]="connectedVoiceChannelId() === channel.id ? 'Покинуть голосовой канал' : 'Подключиться к голосовому каналу'"
+                          [attr.title]="connectedVoiceChannelId() === channel.id ? 'Покинуть голосовой канал' : 'Подключиться к голосовому каналу'"
+                          (click)="togglePlatformVoiceChannel(channel, $event)"
+                        >
+                          <img [src]="connectedVoiceChannelId() === channel.id ? '/assets/Phone outgoing.svg' : '/assets/Phone_connect.svg'" alt="" />
+                        </button>
+                      </div>
+                    } @empty {
+                      <div class="rail-empty">Голосовых каналов пока нет</div>
+                    }
+                  </div>
+                </div>
+              </aside>
+            }
+
+            <div class="workspace-main-pane">
+              @if (isGroupsMode()) {
+                <section class="group-overview">
+                  @if (activeGroupVoiceChannel(); as groupVoiceChannel) {
+                    <div class="group-voice-card" [class.group-voice-card--active]="connectedVoiceChannelId() === groupVoiceChannel.id">
+                      <button
+                        class="group-voice-card__summary"
+                        type="button"
+                        [attr.aria-expanded]="groupVoiceParticipantsExpanded()"
+                        [attr.aria-label]="groupVoiceParticipantsExpanded() ? 'Скрыть активных участников голосового чата' : 'Показать активных участников голосового чата'"
+                        (click)="toggleGroupVoiceParticipantsExpanded()"
+                      >
+                        <div class="group-voice-card__copy">
+                          <strong>{{ groupVoiceChannel.name }}</strong>
+                          <small>Участников: {{ activeGroupVoiceParticipants().length }}</small>
+                        </div>
+                      </button>
+                      <button class="secondary-button group-voice-card__action" type="button" (click)="toggleActiveGroupVoice()">
+                        <img [src]="connectedVoiceChannelId() === groupVoiceChannel.id ? '/assets/Phone outgoing.svg' : '/assets/Phone_connect.svg'" alt="" />
+                      </button>
+                    </div>
+                    @if (groupVoiceParticipantsExpanded()) {
+                      <div class="group-voice-roster">
+                        @if (activeGroupVoiceParticipants().length) {
+                          @for (participant of activeGroupVoiceParticipants(); track participant.id) {
+                            <div class="group-voice-roster__member">
+                              <div class="group-voice-roster__avatar">
+                                @if (userAvatarUrl(participant.user_id, participant.avatar_updated_at); as avatarUrl) {
+                                  <img [src]="avatarUrl" [alt]="displayNick(participant.nick)" loading="lazy" />
+                                } @else {
+                                  <span>{{ displayNickInitials(participant.nick) }}</span>
+                                }
+                              </div>
+                              <div class="group-voice-roster__copy">
+                                <strong>{{ displayNick(participant.nick) }}</strong>
+                                @if (participant.is_self) {
+                                  <small>{{ groupVoiceSelfStatusLabel(participant) }}</small>
+                                } @else {
+                                  <div class="group-voice-roster__controls">
+                                    <input
+                                      class="group-voice-roster__volume"
+                                      type="range"
+                                      min="0"
+                                      max="200"
+                                      step="1"
+                                      [value]="groupVoiceParticipantVolume(participant)"
+                                      [attr.aria-label]="'Громкость ' + displayNick(participant.nick)"
+                                      (input)="setGroupVoiceParticipantVolume(participant, $any($event.target).value)"
+                                    />
+                                    <small>{{ groupVoiceParticipantVolume(participant) }}%</small>
+                                  </div>
+                                }
+                              </div>
+                              @if (participant.is_self) {
+                                <button
+                                  class="group-voice-roster__state-button"
+                                  type="button"
+                                  [attr.title]="groupVoiceStateActionLabel(participant)"
+                                  [attr.aria-label]="groupVoiceStateActionLabel(participant)"
+                                  (click)="toggleGroupVoiceParticipantMute(participant)"
+                                >
+                                  <img
+                                    class="group-voice-roster__state"
+                                    [src]="groupVoiceStateIconPath(participant)"
+                                    [alt]="groupVoiceStateIconAlt(participant)"
+                                  />
+                                </button>
+                              } @else {
+                                <span class="group-voice-roster__state-shell" [attr.title]="groupVoiceStateIconAlt(participant)">
+                                  <img
+                                    class="group-voice-roster__state"
+                                    [src]="groupVoiceStateIconPath(participant)"
+                                    [alt]="groupVoiceStateIconAlt(participant)"
+                                  />
+                                </span>
+                              }
+                            </div>
+                          }
+                        } @else {
+                          <div class="group-voice-roster__empty">В голосовом чате пока никого нет</div>
+                        }
+                      </div>
+                    }
+                  }
+                </section>
+              }
+
+              <section class="conversation-stream">
             <div class="message-list" #messageList (scroll)="onMessageListScroll()">
               @if (canUseActiveChannelChat()) {
                 @if (!messagesLoading()) {
@@ -875,11 +985,13 @@
               }
             </section>
           </section>
+            </div>
+          </div>
         } @else {
           <section class="workspace-empty-state">
             <img class="workspace-empty-state__logo" src="/assets/KVA-chat.png" alt="KVA Chat" />
-            <strong>Выберите чат или группу</strong>
-            <small>Слева можно открыть личный диалог или перейти в нужную группу</small>
+            <strong>Выберите друга, группу или площадку</strong>
+            <small>Слева можно открыть личный диалог, мини-группу или площадку с каналами</small>
           </section>
         }
       </main>
@@ -900,7 +1012,15 @@
         type="button"
         (click)="openMobileWorkspaceMode('groups')"
       >
-        Групповые
+        Группы
+      </button>
+      <button
+        class="mobile-mode-footer__button"
+        [class.mobile-mode-footer__button--active]="isPlatformsMode()"
+        type="button"
+        (click)="openMobileWorkspaceMode('platforms')"
+      >
+        Площадка
       </button>
     </nav>
   </div>
@@ -1973,7 +2093,7 @@
     <section class="modal modal--wide modal--conversation-create" (click)="$event.stopPropagation()">
       <div class="modal__header">
         <div>
-          <p class="eyebrow">Группа</p>
+          <p class="eyebrow">{{ isPlatformsMode() ? 'Площадка' : 'Группа' }}</p>
           <h3>Добавить участника</h3>
         </div>
         <button class="icon-button" type="button" (click)="closeAddGroupMemberModal()">×</button>
@@ -1993,7 +2113,9 @@
             />
           </label>
 
-          <p class="modal-note">В группу можно добавить только пользователя из раздела «Друзья».</p>
+          <p class="modal-note">
+            {{ isPlatformsMode() ? 'На площадку можно добавить только пользователя из раздела «Друзья».' : 'В группу можно добавить только пользователя из раздела «Друзья».' }}
+          </p>
 
           <div class="conversation-picker-list">
             @for (user of activeGroupKnownCandidates(); track user.user_id) {
@@ -2017,7 +2139,9 @@
                 </span>
               </button>
             } @empty {
-              <div class="rail-empty">Сначала добавьте пользователя в раздел «Друзья», потом сможете пригласить его в группу</div>
+              <div class="rail-empty">
+                {{ isPlatformsMode() ? 'Сначала добавьте пользователя в раздел «Друзья», потом сможете пригласить его на площадку' : 'Сначала добавьте пользователя в раздел «Друзья», потом сможете пригласить его в группу' }}
+              </div>
             }
           </div>
         </div>
@@ -2037,7 +2161,7 @@
           [disabled]="!canAddGroupMember()"
           (click)="submitAddGroupMember()"
         >
-          {{ addGroupMemberLoading() ? 'Добавляем...' : 'Добавить в группу' }}
+          {{ addGroupMemberLoading() ? 'Добавляем...' : (isPlatformsMode() ? 'Добавить на площадку' : 'Добавить в группу') }}
         </button>
       </div>
     </section>
@@ -2067,6 +2191,41 @@
           <button class="secondary-button" type="button" (click)="closeCreateGroupModal()">Отмена</button>
           <button class="primary-button" type="submit" [disabled]="createGroupLoading()">
             {{ createGroupLoading() ? 'Создаем...' : 'Создать группу' }}
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+}
+
+@if (createPlatformModalOpen()) {
+  <div class="modal-backdrop" (click)="closeCreatePlatformModal()">
+    <section class="modal modal--compact" (click)="$event.stopPropagation()">
+      <div class="modal__header">
+        <div>
+          <p class="eyebrow">Площадка</p>
+          <h3>Создать новую площадку</h3>
+        </div>
+        <button class="icon-button" type="button" (click)="closeCreatePlatformModal()">✕</button>
+      </div>
+
+      <form class="modal__body stack-form" (ngSubmit)="submitCreatePlatform()">
+        <label class="field">
+          <span>Название площадки</span>
+          <input [(ngModel)]="createPlatformForm.name" name="platform_name" placeholder="Например, Команда KVA" type="text" />
+        </label>
+
+        <label class="field">
+          <span>Описание</span>
+          <input [(ngModel)]="createPlatformForm.description" name="platform_description" placeholder="Коротко о площадке" type="text" />
+        </label>
+
+        <p class="modal-note">После создания внутри сразу появятся общий текстовый канал и голосовая таверна. Остальные каналы можно добавить уже внутри площадки.</p>
+
+        <div class="modal__actions">
+          <button class="secondary-button" type="button" (click)="closeCreatePlatformModal()">Отмена</button>
+          <button class="primary-button" type="submit" [disabled]="createPlatformLoading()">
+            {{ createPlatformLoading() ? 'Создаем...' : 'Создать площадку' }}
           </button>
         </div>
       </form>
@@ -2125,7 +2284,7 @@
     <section class="modal modal--wide modal--conversation-create modal--group-members" (click)="$event.stopPropagation()">
       <div class="modal__header">
         <div>
-          <p class="eyebrow">Группа</p>
+          <p class="eyebrow">{{ isPlatformsMode() ? 'Площадка' : 'Группа' }}</p>
           <h3>Пользователи</h3>
         </div>
         <button class="icon-button" type="button" (click)="closeGroupMembersPanel()">×</button>
@@ -2163,7 +2322,7 @@
               }
             </div>
           } @empty {
-            <div class="rail-empty">В группе пока нет участников</div>
+            <div class="rail-empty">{{ isPlatformsMode() ? 'На площадке пока нет участников' : 'В группе пока нет участников' }}</div>
           }
         </div>
       </div>

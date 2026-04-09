@@ -13,7 +13,7 @@ from app.core.config import get_settings
 from app.services.dev_seed import ensure_development_seed_data
 from app.db.session import SessionLocal
 from app.services.app_events import publish_presence_updated
-from app.services.default_tavern import ensure_default_tavern_workspace_setup
+from app.services.workspace_defaults import ensure_workspace_defaults_for_all
 from app.services.site_presence import site_presence_manager
 
 settings = get_settings()
@@ -37,10 +37,10 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not seed development data")
     try:
         with SessionLocal() as db:
-            ensure_default_tavern_workspace_setup(db)
+            ensure_workspace_defaults_for_all(db)
             db.commit()
     except Exception:  # pragma: no cover - startup resilience matters more than failing hard here
-        logger.exception("Could not ensure default tavern voice channels")
+        logger.exception("Could not ensure workspace defaults")
     try:
         yield
     finally:

@@ -66,7 +66,7 @@ import { VoiceParticipant, VoiceRoomService } from './core/services/voice-room.s
 
 type AuthMode = 'login' | 'register';
 type ChannelKind = 'text' | 'voice';
-type WorkspaceMode = 'chats' | 'groups';
+type WorkspaceMode = 'chats' | 'groups' | 'platforms';
 type VoicePresenceTone = 'speaking' | 'open' | 'muted' | 'blocked';
 type MemberPresenceTone = VoicePresenceTone | 'inactive';
 type MobilePanel = 'servers' | 'channels' | 'members' | null;
@@ -89,6 +89,11 @@ interface RegisterFormModel {
 
 interface CreateGroupFormModel {
   name: string;
+}
+
+interface CreatePlatformFormModel {
+  name: string;
+  description: string;
 }
 
 interface CreateConversationFormModel {
@@ -185,6 +190,14 @@ interface VoiceAdminAccessMutation {
 interface CreateGroupTrigger {
   token: string;
   payload: CreateGroupConversationRequest;
+}
+
+interface CreatePlatformTrigger {
+  token: string;
+  payload: {
+    name: string;
+    description: string | null;
+  };
 }
 
 interface SendFriendRequestTrigger {
@@ -516,6 +529,7 @@ export class AppComponent {
   private readonly friendManagementTrigger$ = new Subject<FriendManagementTrigger>();
   private readonly openDirectConversationTrigger$ = new Subject<OpenDirectConversationTrigger>();
   private readonly createConversationSubmit$ = new Subject<CreateConversationTrigger>();
+  private readonly createPlatformSubmit$ = new Subject<CreatePlatformTrigger>();
   private readonly addServerMemberTrigger$ = new Subject<AddServerMemberTrigger>();
   private readonly removeServerMemberTrigger$ = new Subject<RemoveServerMemberTrigger>();
   private readonly serverMembershipActionTrigger$ = new Subject<ServerMembershipActionTrigger>();
@@ -626,6 +640,7 @@ export class AppComponent {
   readonly serverMembershipActionPendingServerId = signal<string | null>(null);
   readonly createConversationLoading = signal(false);
   readonly createGroupLoading = signal(false);
+  readonly createPlatformLoading = signal(false);
   readonly createChannelLoading = signal(false);
   readonly conversationPushPendingId = signal<string | null>(null);
   readonly deletingChannelId = signal<string | null>(null);
@@ -653,6 +668,7 @@ export class AppComponent {
   readonly profileEditorOpen = signal(false);
   readonly createConversationModalOpen = signal(false);
   readonly createGroupModalOpen = signal(false);
+  readonly createPlatformModalOpen = signal(false);
   readonly addGroupMemberModalOpen = signal(false);
   readonly createChannelModalOpen = signal(false);
   readonly groupMembersModalOpen = signal(false);
@@ -722,6 +738,11 @@ export class AppComponent {
     name: '',
   };
 
+  readonly createPlatformForm: CreatePlatformFormModel = {
+    name: '',
+    description: '',
+  };
+
   readonly createConversationForm: CreateConversationFormModel = {
     directUserId: '',
     name: '',
@@ -767,11 +788,17 @@ export class AppComponent {
   );
   readonly isChatsMode = computed(() => this.workspaceMode() === 'chats');
   readonly isGroupsMode = computed(() => this.workspaceMode() === 'groups');
+  readonly isPlatformsMode = computed(() => this.workspaceMode() === 'platforms');
   readonly directConversations = computed(() =>
     this.conversations().filter((conversation) => conversation.kind === 'direct')
   );
   readonly groupConversations = computed(() =>
     this.conversations().filter((conversation) => conversation.kind === 'group_chat')
+  );
+  readonly platformSpaces = computed<WorkspaceServer[]>(() =>
+    this.servers()
+      .filter((server) => server.kind === 'workspace')
+      .sort((left, right) => left.name.localeCompare(right.name, 'ru'))
   );
   readonly conversationSpaces = computed<WorkspaceServer[]>(() =>
     this.conversations().map((conversation) => ({
@@ -810,7 +837,11 @@ export class AppComponent {
     }))
   );
   readonly currentSpaceList = computed<WorkspaceServer[]>(() =>
-    this.isChatsMode() ? this.directConversationSpaces() : this.groupConversationSpaces()
+    this.isChatsMode()
+      ? this.directConversationSpaces()
+      : this.isGroupsMode()
+        ? this.groupConversationSpaces()
+        : this.platformSpaces()
   );
 
   readonly activeServer = computed(() => {
@@ -944,6 +975,7 @@ export class AppComponent {
   );
   readonly personalChatEntries = computed(() => this.directConversationSpaces());
   readonly groupChatEntries = computed(() => this.groupConversationSpaces());
+  readonly platformEntries = computed(() => this.platformSpaces());
   readonly activeDirectPeer = computed(() => {
     const conversation = this.activeDirectConversation();
     if (!conversation) {
@@ -1115,6 +1147,10 @@ export class AppComponent {
       return 'Создаем новую группу';
     }
 
+    if (this.createPlatformLoading()) {
+      return 'Создаем новую площадку';
+    }
+
     if (this.createChannelLoading()) {
       return 'Создаем новый канал';
     }
@@ -1124,7 +1160,7 @@ export class AppComponent {
     }
 
     if (this.workspaceLoading()) {
-      return 'Загружаем группы и каналы';
+      return 'Загружаем чаты и каналы';
     }
 
     const health = this.health();
@@ -1192,7 +1228,7 @@ export class AppComponent {
       iconUrl: this.resolveSpaceIconUrl(server.id, server.icon_asset, server.icon_updated_at),
       active: server.id === this.selectedServerId(),
       meta: server.kind === 'workspace'
-        ? 'Группа'
+        ? 'Площадка'
         : server.kind === 'direct'
           ? 'Друг'
           : 'Мини-группа'
@@ -1895,12 +1931,14 @@ export class AppComponent {
               this.addGroupMemberModalOpen.set(false);
               this.addGroupMemberUserId.set('');
               this.addGroupMemberQuery.set('');
-              this.managementSuccess.set(`Участник ${this.displayNick(member.nick)} добавлен в группу`);
+              this.managementSuccess.set(
+                `Участник ${this.displayNick(member.nick)} добавлен ${this.activeServer()?.kind === 'workspace' ? 'на площадку' : 'в группу'}`
+              );
               void this.refreshConversationsList(token);
               void this.refreshMembers();
             }),
             catchError((error) => {
-              this.managementError.set(this.extractErrorMessage(error, 'Не удалось добавить участника в группу'));
+              this.managementError.set(this.extractErrorMessage(error, this.activeServer()?.kind === 'workspace' ? 'Не удалось добавить участника на площадку' : 'Не удалось добавить участника в группу'));
               return EMPTY;
             }),
             finalize(() => {
@@ -1925,12 +1963,14 @@ export class AppComponent {
                 this.closeMemberVolume();
               }
 
-              this.managementSuccess.set(`Участник ${this.displayNick(member.nick)} удален из группы`);
+              this.managementSuccess.set(
+                `Участник ${this.displayNick(member.nick)} удален ${this.activeServer()?.kind === 'workspace' ? 'с площадки' : 'из группы'}`
+              );
               void this.refreshConversationsList(token);
               void this.refreshMembers();
             }),
             catchError((error) => {
-              this.managementError.set(this.extractErrorMessage(error, 'Не удалось удалить участника из группы'));
+              this.managementError.set(this.extractErrorMessage(error, this.activeServer()?.kind === 'workspace' ? 'Не удалось удалить участника с площадки' : 'Не удалось удалить участника из группы'));
               return EMPTY;
             }),
             finalize(() => {
@@ -1960,6 +2000,32 @@ export class AppComponent {
             }),
             finalize(() => {
               this.createGroupLoading.set(false);
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+
+    this.createPlatformSubmit$
+      .pipe(
+        exhaustMap(({ token, payload }) =>
+          this.workspaceApi.createServer(token, payload).pipe(
+            tap((server) => {
+              this.servers.set(this.mergeServersById([...this.servers(), server]));
+              this.workspaceMode.set('platforms');
+              this.createPlatformForm.name = '';
+              this.createPlatformForm.description = '';
+              this.managementSuccess.set(`Площадка «${server.name}» создана`);
+              this.createPlatformModalOpen.set(false);
+              this.loadServerWorkspace(token, server.id);
+            }),
+            catchError((error) => {
+              this.managementError.set(this.extractErrorMessage(error, 'Не удалось создать площадку'));
+              return EMPTY;
+            }),
+            finalize(() => {
+              this.createPlatformLoading.set(false);
             })
           )
         ),
@@ -2656,6 +2722,12 @@ export class AppComponent {
     this.openCreateGroupModal();
   }
 
+  openCreatePlatformShortcut(): void {
+    this.closeQuickCreateMenu();
+    this.closeSideMenu();
+    this.openCreatePlatformModal();
+  }
+
   openAddUserShortcut(): void {
     this.closeQuickCreateMenu();
     this.closeSideMenu();
@@ -2873,7 +2945,13 @@ export class AppComponent {
   }
 
   openAddGroupMemberModal(): void {
-    if (!this.session()?.access_token || !this.activeGroupConversation() || !this.canManageActiveGroup()) {
+    const activeServer = this.activeServer();
+    if (
+      !this.session()?.access_token
+      || !activeServer
+      || (activeServer.kind !== 'group_chat' && activeServer.kind !== 'workspace')
+      || !this.canManageActiveGroup()
+    ) {
       return;
     }
 
@@ -2951,7 +3029,7 @@ export class AppComponent {
     const selectedUserId = this.addGroupMemberUserId().trim();
     const payload = selectedUserId ? { user_id: selectedUserId } : null;
     if (!token || !serverId || !payload) {
-      this.managementError.set('Выберите пользователя для добавления в группу');
+      this.managementError.set(this.isPlatformsMode() ? 'Выберите пользователя для добавления на площадку' : 'Выберите пользователя для добавления в группу');
       return;
     }
 
@@ -2970,7 +3048,11 @@ export class AppComponent {
     this.closeConversationActionMenu();
     this.closeGroupOwnershipModal();
     this.workspaceMode.set(mode);
-    const spaces = mode === 'groups' ? this.groupConversationSpaces() : this.directConversationSpaces();
+    const spaces = mode === 'groups'
+      ? this.groupConversationSpaces()
+      : mode === 'platforms'
+        ? this.platformSpaces()
+        : this.directConversationSpaces();
 
     if (!spaces.some((space) => space.id === this.selectedServerId())) {
       const token = this.session()?.access_token;
@@ -3004,6 +3086,19 @@ export class AppComponent {
 
   closeCreateGroupModal(): void {
     this.createGroupModalOpen.set(false);
+  }
+
+  openCreatePlatformModal(): void {
+    this.closeMobilePanel();
+    this.createPlatformForm.name = '';
+    this.createPlatformForm.description = '';
+    this.createPlatformModalOpen.set(true);
+    this.managementError.set(null);
+    this.managementSuccess.set(null);
+  }
+
+  closeCreatePlatformModal(): void {
+    this.createPlatformModalOpen.set(false);
   }
 
   openCreateConversationModal(tab: ConversationCreateTab = 'direct'): void {
@@ -3131,7 +3226,7 @@ export class AppComponent {
   }
 
   openGroupMembersPanel(): void {
-    if (!this.isGroupsMode()) {
+    if (!this.isGroupsMode() && !this.isPlatformsMode()) {
       return;
     }
 
@@ -3270,6 +3365,32 @@ export class AppComponent {
     }
 
     await this.handleVoiceChannelSelection(voiceChannel);
+  }
+
+  async togglePlatformVoiceChannel(channel: WorkspaceChannel, event?: Event): Promise<void> {
+    event?.stopPropagation();
+    if (channel.type !== 'voice') {
+      return;
+    }
+
+    if (this.connectedVoiceChannelId() === channel.id) {
+      this.leaveVoiceChannel();
+      return;
+    }
+
+    await this.selectChannel(channel);
+  }
+
+  platformVoiceParticipantCount(channelId: string): number {
+    return this.voiceParticipantsForChannel(channelId).length;
+  }
+
+  platformChannelMetaLabel(channel: WorkspaceChannel): string {
+    if (channel.type === 'voice') {
+      return `${this.platformVoiceParticipantCount(channel.id)} в голосе`;
+    }
+
+    return channel.topic?.trim() || 'Текстовый канал площадки';
   }
 
   openDirectChatWithSelectedMember(): void {
@@ -3529,6 +3650,28 @@ export class AppComponent {
     this.managementError.set(null);
     this.managementSuccess.set(null);
     this.createGroupSubmit$.next({ token, payload });
+  }
+
+  submitCreatePlatform(): void {
+    const token = this.session()?.access_token;
+    if (!token) {
+      return;
+    }
+
+    const payload = {
+      name: this.createPlatformForm.name.trim(),
+      description: this.createPlatformForm.description.trim() || null,
+    };
+
+    if (!payload.name) {
+      this.managementError.set('Введите название площадки');
+      return;
+    }
+
+    this.createPlatformLoading.set(true);
+    this.managementError.set(null);
+    this.managementSuccess.set(null);
+    this.createPlatformSubmit$.next({ token, payload });
   }
 
   startDirectConversationFromModal(): void {
@@ -4077,6 +4220,7 @@ export class AppComponent {
     this.profileEditorOpen.set(false);
     this.createConversationModalOpen.set(false);
     this.createGroupModalOpen.set(false);
+    this.createPlatformModalOpen.set(false);
     this.createChannelModalOpen.set(false);
     this.friendRequestsModalOpen.set(false);
     this.blockedFriendsModalOpen.set(false);
@@ -4113,6 +4257,7 @@ export class AppComponent {
     this.createConversationLoading.set(false);
     this.friendRequestsLoading.set(false);
     this.createGroupLoading.set(false);
+    this.createPlatformLoading.set(false);
     this.createChannelLoading.set(false);
     this.conversationPushPendingId.set(null);
     this.friendRequestsError.set(null);
@@ -5300,9 +5445,22 @@ export class AppComponent {
           this.conversations.set(mergedConversations);
           this.tryOpenPendingPushConversation(token);
 
-          const spaces = this.isGroupsMode()
-            ? this.groupConversationSpaces()
-            : this.directConversationSpaces();
+          let spaces = this.currentSpaceList();
+
+          if (!spaces.length) {
+            const fallbackMode = this.directConversationSpaces().length
+              ? 'chats'
+              : this.groupConversationSpaces().length
+                ? 'groups'
+                : this.platformSpaces().length
+                  ? 'platforms'
+                  : null;
+
+            if (fallbackMode) {
+              this.workspaceMode.set(fallbackMode);
+              spaces = this.currentSpaceList();
+            }
+          }
 
           if (!spaces.length) {
             this.appEvents.setActiveServer(null);
@@ -5315,7 +5473,7 @@ export class AppComponent {
             return;
           }
 
-          if (!previousSelectedServerId || !spaces.some((conversation) => conversation.id === previousSelectedServerId)) {
+          if (!previousSelectedServerId || !spaces.some((space) => space.id === previousSelectedServerId)) {
             this.loadServerWorkspace(token, spaces[0].id);
           }
         },
@@ -5622,8 +5780,9 @@ export class AppComponent {
 
           const directSpaces = mergedConversations.filter((conversation) => conversation.kind === 'direct');
           const groupSpaces = mergedConversations.filter((conversation) => conversation.kind === 'group_chat');
+          const platformSpaces = this.mergeServersById(servers).filter((server) => server.kind === 'workspace');
 
-          if (!directSpaces.length && !groupSpaces.length) {
+          if (!directSpaces.length && !groupSpaces.length && !platformSpaces.length) {
             this.appEvents.setActiveServer(null);
             this.stopMemberPolling();
             this.stopVoicePresencePolling();
@@ -5641,16 +5800,22 @@ export class AppComponent {
           const selectedServerId = this.selectedServerId();
           const previousMode = this.workspaceMode();
           const preferredMode = previousMode === 'groups'
-            ? (groupSpaces.length ? 'groups' : 'chats')
-            : (directSpaces.length ? 'chats' : 'groups');
+            ? (groupSpaces.length ? 'groups' : directSpaces.length ? 'chats' : 'platforms')
+            : previousMode === 'platforms'
+              ? (platformSpaces.length ? 'platforms' : directSpaces.length ? 'chats' : 'groups')
+              : (directSpaces.length ? 'chats' : groupSpaces.length ? 'groups' : 'platforms');
           this.workspaceMode.set(preferredMode);
 
           const preferredSpaceList = preferredMode === 'groups'
             ? this.mapConversationSpaces(groupSpaces)
-            : this.mapConversationSpaces(directSpaces);
+            : preferredMode === 'platforms'
+              ? platformSpaces
+              : this.mapConversationSpaces(directSpaces);
           const fallbackSpaceList = preferredMode === 'groups'
-            ? this.mapConversationSpaces(directSpaces)
-            : this.mapConversationSpaces(groupSpaces);
+            ? (directSpaces.length ? this.mapConversationSpaces(directSpaces) : platformSpaces)
+            : preferredMode === 'platforms'
+              ? (directSpaces.length ? this.mapConversationSpaces(directSpaces) : this.mapConversationSpaces(groupSpaces))
+              : (groupSpaces.length ? this.mapConversationSpaces(groupSpaces) : platformSpaces);
           const preferredServerId =
             selectedServerId && preferredSpaceList.some((server) => server.id === selectedServerId)
               ? selectedServerId
@@ -5736,7 +5901,7 @@ export class AppComponent {
           this.voicePresence.set([]);
           this.resetTextChannelState();
           this.workspaceLoading.set(false);
-          this.workspaceError.set(this.extractErrorMessage(error, 'Не удалось загрузить данные выбранной группы'));
+          this.workspaceError.set(this.extractErrorMessage(error, 'Не удалось загрузить данные выбранного пространства'));
         }
       });
   }
@@ -6896,6 +7061,24 @@ export class AppComponent {
     return iconAsset ? this.buildServerIconAssetUrl(iconAsset) : null;
   }
 
+  activeSpaceIconUrl(): string | null {
+    const activeServer = this.activeServer();
+    if (!activeServer) {
+      return null;
+    }
+
+    if (activeServer.kind === 'workspace') {
+      return this.serverIconUrl(activeServer);
+    }
+
+    const activeConversation = this.activeConversation();
+    return activeConversation ? this.conversationIconUrl(activeConversation) : null;
+  }
+
+  platformMetaLabel(server: WorkspaceServer): string {
+    return server.description?.trim() || 'Площадка с каналами';
+  }
+
   conversationMetaLabel(conversation: ConversationSummary): string {
     return conversation.subtitle ?? 'Сообщений пока нет';
   }
@@ -6922,10 +7105,28 @@ export class AppComponent {
     return !!conversationId && this.conversationPushPendingId() === conversationId;
   }
 
+  activeSpaceKindLabel(): string {
+    if (this.isChatsMode()) {
+      return 'Друг';
+    }
+
+    if (this.isPlatformsMode()) {
+      return 'Площадка';
+    }
+
+    return 'Группа';
+  }
+
   activeSpaceMetaLabel(): string {
     if (this.isChatsMode()) {
       const peer = this.activeDirectPeer();
       return peer ? `ID: ${this.formatPublicUserId(peer.public_id)}` : 'Друг';
+    }
+
+    if (this.isPlatformsMode()) {
+      const textChannelsCount = this.textChannels().length;
+      const voiceChannelsCount = this.voiceChannels().length;
+      return `${textChannelsCount} текстовых · ${voiceChannelsCount} голосовых`;
     }
 
     const group = this.activeGroupConversation();

@@ -31,16 +31,13 @@ from app.services.app_events import (
     publish_members_updated_from_sync,
     publish_servers_changed_from_sync,
 )
-from app.services.default_tavern import (
-    ensure_default_tavern_access_for_users,
-    ensure_default_tavern_channel,
-    is_default_tavern_channel,
-)
+from app.services.default_tavern import is_default_tavern_channel
 from app.services.group_chat_defaults import ensure_group_chat_defaults
 from app.services.attachment_storage import delete_stored_attachment
 from app.services.server_access import get_accessible_server, is_server_blocked
 from app.services.server_icons import get_default_server_icon_asset, normalize_server_icon_asset
 from app.services.site_presence import site_presence_manager
+from app.services.workspace_defaults import ensure_workspace_defaults
 from app.services.voice_access import (
     can_view_voice_channel,
     ensure_voice_channel_owner_permission,
@@ -195,7 +192,10 @@ def _collect_server_attachment_storage_paths(db: Session, server_id: UUID) -> li
 @router.get("", response_model=list[ServerSummary])
 def list_servers(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ServerSummary]:
     servers = db.execute(
-        select(Server).where(Server.kind == ServerKind.WORKSPACE).order_by(Server.name)
+        select(Server)
+        .join(ServerMember, ServerMember.server_id == Server.id)
+        .where(Server.kind == ServerKind.WORKSPACE, ServerMember.user_id == current_user.id)
+        .order_by(Server.name)
     ).scalars().all()
     member_roles = {
         server_id: role
@@ -206,10 +206,7 @@ def list_servers(current_user: User = Depends(get_current_user), db: Session = D
         ).all()
     }
 
-    return [
-        _build_server_summary(server, member_roles.get(server.id, MemberRole.MEMBER))
-        for server in servers
-    ]
+    return [_build_server_summary(server, member_roles[server.id]) for server in servers]
 
 
 @router.get("/blocked", response_model=list[BlockedServerSummary])
@@ -234,12 +231,9 @@ def create_server(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ServerSummary:
-    if not current_user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Только администратор может создавать группы")
-
     name = payload.name.strip()
     if not name:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Название группы не может быть пустым")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Название площадки не может быть пустым")
 
     description = payload.description.strip() if payload.description else None
     slug = _ensure_unique_slug(db, _slugify(name))
@@ -262,9 +256,7 @@ def create_server(
         nickname=current_user.username,
     )
     db.add(membership)
-    all_users = db.execute(select(User).order_by(User.created_at, User.id)).scalars().all()
-    tavern_channel = ensure_default_tavern_channel(db, server, created_by_id=current_user.id)
-    ensure_default_tavern_access_for_users(db, [tavern_channel], all_users)
+    ensure_workspace_defaults(db, server, created_by_id=current_user.id)
     db.commit()
     db.refresh(server)
     publish_servers_changed_from_sync(reason="server_created")
@@ -367,6 +359,9 @@ def list_server_channels(
     if server.kind == ServerKind.GROUP_CHAT:
         ensure_group_chat_defaults(db, server)
         db.commit()
+    elif server.kind == ServerKind.WORKSPACE:
+        ensure_workspace_defaults(db, server)
+        db.commit()
     channels = db.execute(
         select(Channel).where(Channel.server_id == server.id).order_by(Channel.position, Channel.name)
     ).scalars().all()
@@ -461,10 +456,7 @@ def add_server_member(
     if server.kind == ServerKind.GROUP_CHAT:
         ensure_group_chat_defaults(db, server)
     elif server.kind == ServerKind.WORKSPACE:
-        tavern_channels = db.execute(
-            select(Channel).where(Channel.server_id == server.id, Channel.type == ChannelType.VOICE, Channel.is_default_tavern.is_(True))
-        ).scalars().all()
-        ensure_default_tavern_access_for_users(db, tavern_channels, [user])
+        ensure_workspace_defaults(db, server)
 
     db.commit()
     db.refresh(existing_member)
@@ -622,6 +614,9 @@ async def list_server_voice_presence(
     server, _ = get_accessible_server(db, server_id, current_user)
     if server.kind == ServerKind.GROUP_CHAT:
         ensure_group_chat_defaults(db, server)
+        db.commit()
+    elif server.kind == ServerKind.WORKSPACE:
+        ensure_workspace_defaults(db, server)
         db.commit()
     voice_channels = db.execute(
         select(Channel)
