@@ -3613,10 +3613,6 @@ export class AppComponent {
     this.setGroupVoiceParticipantVolume(participant, value);
   }
 
-  platformVoiceSelfStatusLabel(participant: VoiceParticipant): string {
-    return this.groupVoiceSelfStatusLabel(participant);
-  }
-
   canTogglePlatformVoiceParticipantMute(participant: VoiceParticipant, channelId: string): boolean {
     return participant.is_self && this.connectedVoiceChannelId() === channelId;
   }
