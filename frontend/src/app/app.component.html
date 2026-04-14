@@ -2416,34 +2416,7 @@
           <p class="eyebrow">Площадка</p>
           <h3>Настройки площадки</h3>
         </div>
-        <div class="platform-settings__header-actions">
-          <button
-            class="secondary-button conversation-head__action conversation-head__action--icon"
-            type="button"
-            aria-label="Управление площадкой"
-            title="Управление площадкой"
-            (click)="togglePlatformSettingsDangerMenu()"
-          >
-            <img src="/assets/Trash.svg" alt="" />
-          </button>
-          <button class="icon-button" type="button" (click)="closePlatformSettingsModal()">×</button>
-
-          @if (platformSettingsDangerMenuOpen()) {
-            @if (activeServer(); as platform) {
-              <div class="platform-settings__danger-menu conversation-action-menu">
-                <button class="conversation-action-menu__item" type="button" [disabled]="isServerMembershipActionPending(platform.id)" (click)="leaveActivePlatform()">
-                  Выйти с площадки
-                </button>
-                <button class="conversation-action-menu__item conversation-action-menu__item--danger" type="button" [disabled]="isServerMembershipActionPending(platform.id)" (click)="blockActivePlatform()">
-                  Заблокировать площадку
-                </button>
-                <button class="conversation-action-menu__item" type="button" (click)="closePlatformSettingsDangerMenu()">
-                  Отмена
-                </button>
-              </div>
-            }
-          }
-        </div>
+        <button class="icon-button" type="button" (click)="closePlatformSettingsModal()">×</button>
       </div>
 
       <div class="modal__body">
@@ -2454,171 +2427,313 @@
           <p class="modal-note modal-note--success">{{ managementSuccess }}</p>
         }
 
-        <div class="platform-settings-sections">
-          <section class="platform-settings-section">
-            <div class="platform-settings-section__head">
-              <strong>Текстовые каналы</strong>
+        @if (activeServer(); as platform) {
+          <section class="platform-settings-section" style="margin-bottom:12px;">
+            <div class="platform-settings-section__head" style="align-items:flex-start;">
+              <div style="min-width:0;display:grid;gap:3px;">
+                <strong style="font-size:14px;">{{ platform.name }}</strong>
+                @if (platform.description) {
+                  <small style="color:rgba(222,236,245,0.6);font-size:11px;">{{ platform.description }}</small>
+                }
+              </div>
+              @if (platformUnreadCount(platform) > 0) {
+                <span class="platform-settings-row__badge">{{ platformUnreadBadgeLabel(platform) }} новых</span>
+              }
             </div>
 
-            <div class="platform-settings-list">
-              @for (channel of textChannels(); track channel.id) {
-                <div class="platform-settings-row">
-                  <div class="platform-settings-row__copy">
-                    <strong># {{ channel.name }}</strong>
-                  </div>
-                  @if (canDeleteWorkspaceChannel(channel)) {
-                    <button
-                      class="platform-settings-row__delete"
-                      type="button"
-                      title="Удалить канал"
-                      aria-label="Удалить канал"
-                      [disabled]="isDeletingChannel(channel.id)"
-                      (click)="deleteChannel(channel)"
-                    >
-                      <img src="/assets/Trash.svg" alt="" />
-                    </button>
-                  } @else {
-                    <span class="platform-settings-row__badge">Системный</span>
-                  }
-                </div>
-              } @empty {
-                <p class="modal-note">Текстовых каналов пока нет.</p>
+            <div class="voice-admin__chips" style="gap:6px;flex-wrap:wrap;">
+              <span class="voice-admin__chip" style="min-height:22px;padding:0 8px;font-size:10px;border-radius:999px;">{{ activeGroupMemberCount() }} участников</span>
+              <span class="voice-admin__chip" style="min-height:22px;padding:0 8px;font-size:10px;border-radius:999px;">{{ textChannels().length }} текстовых</span>
+              <span class="voice-admin__chip" style="min-height:22px;padding:0 8px;font-size:10px;border-radius:999px;">{{ voiceChannels().length }} голосовых</span>
+              @if (activePlatformVoiceRequestCount() > 0) {
+                <span class="voice-admin__chip voice-admin__chip--warning" style="min-height:22px;padding:0 8px;font-size:10px;border-radius:999px;">{{ activePlatformVoiceRequestCount() }} заявок</span>
               }
             </div>
           </section>
 
-          <section class="platform-settings-section">
-            <div class="platform-settings-section__head">
-              <strong>Голосовые каналы</strong>
-            </div>
-
-            <div class="platform-settings-list">
-              @for (channel of voiceChannels(); track channel.id) {
-                <div class="platform-settings-row" [class.platform-settings-row--active]="isPlatformVoiceSettingsSelected(channel.id)">
-                  <div class="platform-settings-row__copy" style="display:grid;gap:2px;">
-                    <strong>{{ channel.name }}</strong>
-                    <small style="color:rgba(222,236,245,0.58);font-size:10px;">{{ platformChannelMetaLabel(channel) }}</small>
-                  </div>
-                  <div class="platform-settings-row__actions">
-                    @if (platformVoiceChannelPendingRequestCount(channel.id) > 0) {
-                      <span class="platform-settings-row__badge">{{ platformVoiceChannelPendingRequestLabel(channel.id) }} ждут</span>
-                    }
-                    @if (canManagePlatformVoiceChannel(channel)) {
-                      <button
-                        class="platform-settings-row__icon"
-                        type="button"
-                        title="Настроить канал"
-                        aria-label="Настроить канал"
-                        (click)="openPlatformVoiceChannelSettings(channel)"
-                      >
-                        <span class="conversation-head__action-symbol" aria-hidden="true">⚙</span>
-                      </button>
-                    }
-                    @if (canDeleteWorkspaceChannel(channel)) {
-                      <button
-                        class="platform-settings-row__delete"
-                        type="button"
-                        title="Удалить канал"
-                        aria-label="Удалить канал"
-                        [disabled]="isDeletingChannel(channel.id)"
-                        (click)="deleteChannel(channel)"
-                      >
-                        <img src="/assets/Trash.svg" alt="" />
-                      </button>
-                    } @else if (isProtectedWorkspaceChannel(channel)) {
-                      <span class="platform-settings-row__badge">Системный</span>
-                    }
-                  </div>
-                </div>
-              } @empty {
-                <p class="modal-note">Голосовых каналов пока нет.</p>
-              }
-            </div>
-          </section>
-
-          @if (platformVoiceSettingsChannel(); as voiceSettingsChannel) {
-            <section class="platform-settings-section platform-settings-section--voice-access">
+          <div class="platform-settings-sections">
+            <section class="platform-settings-section">
               <div class="platform-settings-section__head">
-                <strong>{{ voiceSettingsChannel.name }}</strong>
-                @if (platformVoiceSettingsOwnerEntry(); as voiceOwnerEntry) {
-                  <span class="platform-settings-row__badge">Владелец: {{ displayNick(voiceOwnerEntry.nick) }}</span>
+                <strong>Управление</strong>
+              </div>
+
+              <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                @if (canManageActiveGroup()) {
+                  <button class="secondary-button" type="button" style="min-height:32px;padding:0 12px;font-size:11px;" (click)="openPlatformSettingsAddMember()">
+                    Участник
+                  </button>
+                  <button class="secondary-button" type="button" style="min-height:32px;padding:0 12px;font-size:11px;" (click)="openCreateChannelModal('text')">
+                    Текст
+                  </button>
+                  <button class="secondary-button" type="button" style="min-height:32px;padding:0 12px;font-size:11px;" (click)="openCreateChannelModal('voice')">
+                    Голос
+                  </button>
+                }
+                <button
+                  class="secondary-button"
+                  type="button"
+                  style="min-height:32px;padding:0 12px;font-size:11px;"
+                  [disabled]="isServerMembershipActionPending(platform.id)"
+                  (click)="startPlatformSettingsMembershipAction('leave')"
+                >
+                  {{ isActiveGroupOwner() ? 'Передать / выйти' : 'Выйти' }}
+                </button>
+                <button
+                  class="secondary-button secondary-button--danger"
+                  type="button"
+                  style="min-height:32px;padding:0 12px;font-size:11px;"
+                  [disabled]="isServerMembershipActionPending(platform.id)"
+                  (click)="startPlatformSettingsMembershipAction('block')"
+                >
+                  {{ isActiveGroupOwner() ? 'Закрыть / блок' : 'Блок' }}
+                </button>
+              </div>
+            </section>
+
+            <section class="platform-settings-section">
+              <div class="platform-settings-section__head">
+                <strong>Участники</strong>
+                @if (canManageActiveGroup()) {
+                  <button class="secondary-button" type="button" style="min-height:30px;padding:0 10px;font-size:11px;" (click)="openPlatformSettingsAddMember()">
+                    + Участник
+                  </button>
                 }
               </div>
 
-              @if (platformVoiceSettingsPendingRequests().length) {
-                <div class="platform-voice-request-list">
-                  @for (request of platformVoiceSettingsPendingRequests(); track request.id) {
-                    <div class="platform-voice-request-row" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.05);">
-                      <div class="platform-voice-request-row__identity" style="min-width:0;display:flex;align-items:center;gap:8px;flex:1 1 220px;">
-                        <span class="platform-voice-request-row__avatar" style="width:28px;height:28px;flex:0 0 28px;border-radius:50%;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;background:rgba(61,214,198,0.12);color:rgba(240,247,246,0.92);font-size:10px;font-weight:700;">
-                          @if (userAvatarUrl(request.requester_user_id, request.requester_avatar_updated_at); as avatarUrl) {
-                            <img [src]="avatarUrl" [alt]="displayNick(request.requester_nick)" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" />
-                          } @else {
-                            <span>{{ displayNickInitials(request.requester_nick) }}</span>
-                          }
-                        </span>
-                        <div class="platform-voice-request-row__copy" style="min-width:0;display:grid;gap:2px;">
-                          <strong>{{ displayNick(request.requester_nick) }}</strong>
-                          <small style="color:rgba(222,236,245,0.58);font-size:10px;">{{ formatMessageTime(request.created_at) }}</small>
-                        </div>
-                      </div>
-                      <div class="platform-voice-request-row__actions" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
-                        <button class="secondary-button" type="button" style="min-height:30px;padding:0 10px;font-size:11px;" [disabled]="voiceOwnerActionLoading()" (click)="resolveVoiceRequest(request, 'allow')">Впустить</button>
-                        <button class="secondary-button" type="button" style="min-height:30px;padding:0 10px;font-size:11px;" [disabled]="voiceOwnerActionLoading()" (click)="resolveVoiceRequest(request, 'resident')">Житель</button>
-                        <button class="primary-button" type="button" style="min-height:30px;padding:0 10px;font-size:11px;" [disabled]="voiceOwnerActionLoading()" (click)="resolveVoiceRequest(request, 'reject')">Блок</button>
-                      </div>
-                    </div>
-                  }
-                </div>
-              }
-
-              <div class="platform-voice-access-list">
-                @if (voiceAdminAccessLoading()) {
-                  <p class="modal-note">Загружаем роли канала...</p>
-                } @else {
-                  @for (view of platformVoiceSettingsAccessView(); track view.entry.user_id) {
-                    <div class="platform-voice-access-row">
-                      <div class="platform-voice-access-row__copy" style="min-width:0;display:grid;gap:5px;">
-                        <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">{{ displayNick(view.entry.nick) }}</strong>
-                        <div class="voice-admin__chips" style="gap:4px;">
-                          @for (chip of view.statusChips; track chip.label) {
-                            <span
-                              class="voice-admin__chip"
-                              [class.voice-admin__chip--online]="chip.tone === 'online'"
-                              [class.voice-admin__chip--active]="chip.tone === 'active'"
-                              [class.voice-admin__chip--warning]="chip.tone === 'warning'"
-                              [class.voice-admin__chip--danger]="chip.tone === 'danger'"
-                              style="min-height:20px;padding:0 7px;font-size:10px;border-radius:999px;"
-                            >
-                              {{ chip.label }}
-                            </span>
-                          }
-                          @if (isPlatformMemberManager(view.entry.user_id)) {
-                            <span class="voice-admin__chip" style="min-height:20px;padding:0 7px;font-size:10px;border-radius:999px;">Упр. площадкой</span>
-                          }
-                        </div>
-                      </div>
-
-                      <select
-                        class="platform-voice-access-row__select"
-                        [ngModel]="view.entry.role"
-                        [disabled]="voiceAdminSaving() || !canEditPlatformVoiceRole(view.entry)"
-                        [name]="'platform_voice_role_' + view.entry.user_id"
-                        (ngModelChange)="updatePlatformVoiceRole(view.entry, $event)"
-                      >
-                        @for (roleOption of platformVoiceRoleOptions(view.entry); track roleOption) {
-                          <option [value]="roleOption">{{ voiceAccessRoleLabel(roleOption) }}</option>
+              <div class="platform-settings-list" style="max-height:min(260px,32vh);">
+                @for (member of groupMembers(); track member.userId) {
+                  <div class="platform-settings-row">
+                    <button
+                      type="button"
+                      (click)="openPlatformSettingsMember(member)"
+                      style="min-width:0;display:grid;grid-template-columns:34px minmax(0,1fr);align-items:center;gap:8px;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;"
+                    >
+                      <span class="conversation-picker-row__avatar" style="margin:0;">
+                        @if (userAvatarUrl(member.userId, member.avatarUpdatedAt); as avatarUrl) {
+                          <img [src]="avatarUrl" [alt]="displayNick(member.nick)" loading="lazy" />
+                        } @else {
+                          <span>{{ displayNickInitials(member.nick) }}</span>
                         }
-                      </select>
+                      </span>
+                      <span style="min-width:0;display:grid;gap:2px;">
+                        <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">{{ displayNick(member.nick) }}</strong>
+                        <small style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(222,236,245,0.62);font-size:10px;">{{ platformMemberIdentityLabel(member) }}</small>
+                        <small style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(222,236,245,0.54);font-size:10px;">{{ platformMemberPresenceLabel(member) }}</small>
+                      </span>
+                    </button>
+
+                    <div class="platform-settings-row__actions">
+                      @if (member.isSelf) {
+                        <span class="platform-settings-row__badge">Вы</span>
+                      }
+                      @if (canRemoveGroupMember(member)) {
+                        <button
+                          class="platform-settings-row__delete"
+                          type="button"
+                          [disabled]="isRemovingGroupMember(member.userId)"
+                          title="Удалить участника"
+                          aria-label="Удалить участника"
+                          (click)="removeGroupMember(member)"
+                        >
+                          <img src="/assets/Trash.svg" alt="" />
+                        </button>
+                      }
                     </div>
-                  } @empty {
-                    <p class="modal-note">На площадке пока нет участников для настройки доступа.</p>
-                  }
+                  </div>
+                } @empty {
+                  <p class="modal-note">На площадке пока нет участников.</p>
                 }
               </div>
             </section>
-          }
-        </div>
+
+            <section class="platform-settings-section">
+              <div class="platform-settings-section__head">
+                <strong>Текстовые каналы</strong>
+                @if (canManageActiveGroup()) {
+                  <button class="secondary-button" type="button" style="min-height:30px;padding:0 10px;font-size:11px;" (click)="openCreateChannelModal('text')">
+                    + Текст
+                  </button>
+                }
+              </div>
+
+              <div class="platform-settings-list">
+                @for (channel of textChannels(); track channel.id) {
+                  <div class="platform-settings-row" [class.platform-settings-row--active]="selectedChannelId() === channel.id">
+                    <div class="platform-settings-row__copy" style="display:grid;gap:2px;">
+                      <strong># {{ channel.name }}</strong>
+                      <small style="color:rgba(222,236,245,0.58);font-size:10px;">{{ platformChannelMetaLabel(channel) }}</small>
+                    </div>
+                    <div class="platform-settings-row__actions">
+                      @if (channelUnreadCount(channel) > 0) {
+                        <span class="platform-settings-row__badge">{{ channelUnreadBadgeLabel(channel) }}</span>
+                      }
+                      @if (canDeleteWorkspaceChannel(channel)) {
+                        <button
+                          class="platform-settings-row__delete"
+                          type="button"
+                          title="Удалить канал"
+                          aria-label="Удалить канал"
+                          [disabled]="isDeletingChannel(channel.id)"
+                          (click)="deleteChannel(channel)"
+                        >
+                          <img src="/assets/Trash.svg" alt="" />
+                        </button>
+                      } @else {
+                        <span class="platform-settings-row__badge">Системный</span>
+                      }
+                    </div>
+                  </div>
+                } @empty {
+                  <p class="modal-note">Текстовых каналов пока нет.</p>
+                }
+              </div>
+            </section>
+
+            <section class="platform-settings-section">
+              <div class="platform-settings-section__head">
+                <strong>Голосовые каналы</strong>
+                @if (canManageActiveGroup()) {
+                  <button class="secondary-button" type="button" style="min-height:30px;padding:0 10px;font-size:11px;" (click)="openCreateChannelModal('voice')">
+                    + Голос
+                  </button>
+                }
+              </div>
+
+              <div class="platform-settings-list">
+                @for (channel of voiceChannels(); track channel.id) {
+                  <div class="platform-settings-row" [class.platform-settings-row--active]="isPlatformVoiceSettingsSelected(channel.id)">
+                    <div class="platform-settings-row__copy" style="display:grid;gap:2px;">
+                      <strong>{{ channel.name }}</strong>
+                      <small style="color:rgba(222,236,245,0.58);font-size:10px;">{{ platformChannelMetaLabel(channel) }}</small>
+                    </div>
+                    <div class="platform-settings-row__actions">
+                      @if (channelUnreadCount(channel) > 0) {
+                        <span class="platform-settings-row__badge">{{ channelUnreadBadgeLabel(channel) }}</span>
+                      }
+                      @if (platformVoiceChannelPendingRequestCount(channel.id) > 0) {
+                        <span class="platform-settings-row__badge">{{ platformVoiceChannelPendingRequestLabel(channel.id) }}</span>
+                      }
+                      @if (canManagePlatformVoiceChannel(channel)) {
+                        <button
+                          class="platform-settings-row__icon"
+                          type="button"
+                          title="Настроить канал"
+                          aria-label="Настроить канал"
+                          (click)="openPlatformVoiceChannelSettings(channel)"
+                        >
+                          <span class="conversation-head__action-symbol" aria-hidden="true">⚙</span>
+                        </button>
+                      }
+                      @if (canDeleteWorkspaceChannel(channel)) {
+                        <button
+                          class="platform-settings-row__delete"
+                          type="button"
+                          title="Удалить канал"
+                          aria-label="Удалить канал"
+                          [disabled]="isDeletingChannel(channel.id)"
+                          (click)="deleteChannel(channel)"
+                        >
+                          <img src="/assets/Trash.svg" alt="" />
+                        </button>
+                      } @else if (isProtectedWorkspaceChannel(channel)) {
+                        <span class="platform-settings-row__badge">Системный</span>
+                      }
+                    </div>
+                  </div>
+                } @empty {
+                  <p class="modal-note">Голосовых каналов пока нет.</p>
+                }
+              </div>
+            </section>
+
+            @if (platformVoiceSettingsChannel(); as voiceSettingsChannel) {
+              <section class="platform-settings-section platform-settings-section--voice-access">
+                <div class="platform-settings-section__head">
+                  <strong>{{ voiceSettingsChannel.name }}</strong>
+                  @if (platformVoiceSettingsOwnerEntry(); as voiceOwnerEntry) {
+                    <span class="platform-settings-row__badge">Владелец: {{ displayNick(voiceOwnerEntry.nick) }}</span>
+                  }
+                </div>
+
+                @if (platformVoiceSettingsPendingRequests().length) {
+                  <div class="platform-voice-request-list">
+                    @for (request of platformVoiceSettingsPendingRequests(); track request.id) {
+                      <div class="platform-voice-request-row" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.05);">
+                        <div class="platform-voice-request-row__identity" style="min-width:0;display:flex;align-items:center;gap:8px;flex:1 1 220px;">
+                          <span class="platform-voice-request-row__avatar" style="width:28px;height:28px;flex:0 0 28px;border-radius:50%;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;background:rgba(61,214,198,0.12);color:rgba(240,247,246,0.92);font-size:10px;font-weight:700;">
+                            @if (userAvatarUrl(request.requester_user_id, request.requester_avatar_updated_at); as avatarUrl) {
+                              <img [src]="avatarUrl" [alt]="displayNick(request.requester_nick)" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" />
+                            } @else {
+                              <span>{{ displayNickInitials(request.requester_nick) }}</span>
+                            }
+                          </span>
+                          <div class="platform-voice-request-row__copy" style="min-width:0;display:grid;gap:2px;">
+                            <strong>{{ displayNick(request.requester_nick) }}</strong>
+                            <small style="color:rgba(222,236,245,0.58);font-size:10px;">{{ request.server_name }} · {{ formatMessageTime(request.created_at) }}</small>
+                          </div>
+                        </div>
+                        <div class="platform-voice-request-row__actions" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+                          <button class="secondary-button" type="button" style="min-height:30px;padding:0 10px;font-size:11px;" [disabled]="voiceOwnerActionLoading()" (click)="resolveVoiceRequest(request, 'allow')">Впустить</button>
+                          <button class="secondary-button" type="button" style="min-height:30px;padding:0 10px;font-size:11px;" [disabled]="voiceOwnerActionLoading()" (click)="resolveVoiceRequest(request, 'resident')">Житель</button>
+                          <button class="primary-button" type="button" style="min-height:30px;padding:0 10px;font-size:11px;" [disabled]="voiceOwnerActionLoading()" (click)="resolveVoiceRequest(request, 'reject')">Блок</button>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+
+                <div class="platform-voice-access-list">
+                  @if (voiceAdminAccessLoading()) {
+                    <p class="modal-note">Загружаем роли канала...</p>
+                  } @else {
+                    @for (view of platformVoiceSettingsAccessView(); track view.entry.user_id) {
+                      <div class="platform-voice-access-row">
+                        <div class="platform-voice-access-row__copy" style="min-width:0;display:grid;gap:5px;">
+                          <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">{{ displayNick(view.entry.nick) }}</strong>
+                          <div class="voice-admin__chips" style="gap:4px;">
+                            @for (chip of view.statusChips; track chip.label) {
+                              <span
+                                class="voice-admin__chip"
+                                [class.voice-admin__chip--online]="chip.tone === 'online'"
+                                [class.voice-admin__chip--active]="chip.tone === 'active'"
+                                [class.voice-admin__chip--warning]="chip.tone === 'warning'"
+                                [class.voice-admin__chip--danger]="chip.tone === 'danger'"
+                                style="min-height:20px;padding:0 7px;font-size:10px;border-radius:999px;"
+                              >
+                                {{ chip.label }}
+                              </span>
+                            }
+                            @if (isPlatformMemberManager(view.entry.user_id)) {
+                              <span class="voice-admin__chip" style="min-height:20px;padding:0 7px;font-size:10px;border-radius:999px;">Упр. площадкой</span>
+                            }
+                          </div>
+                        </div>
+
+                        <select
+                          class="platform-voice-access-row__select"
+                          [ngModel]="view.entry.role"
+                          [disabled]="voiceAdminSaving() || !canEditPlatformVoiceRole(view.entry)"
+                          [name]="'platform_voice_role_' + view.entry.user_id"
+                          (ngModelChange)="updatePlatformVoiceRole(view.entry, $event)"
+                        >
+                          @for (roleOption of platformVoiceRoleOptions(view.entry); track roleOption) {
+                            <option [value]="roleOption">{{ voiceAccessRoleLabel(roleOption) }}</option>
+                          }
+                        </select>
+                      </div>
+                    } @empty {
+                      <p class="modal-note">На площадке пока нет участников для настройки доступа.</p>
+                    }
+                  }
+                </div>
+              </section>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="modal__actions">
+        <button class="secondary-button" type="button" (click)="closePlatformSettingsModal()">Закрыть</button>
       </div>
     </section>
   </div>

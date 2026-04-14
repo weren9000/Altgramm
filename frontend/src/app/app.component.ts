@@ -3409,6 +3409,56 @@ export class AppComponent {
     this.platformVoiceSettingsChannelId.set(null);
   }
 
+  openPlatformSettingsAddMember(): void {
+    this.closePlatformSettingsModal();
+    this.openAddGroupMemberModal();
+  }
+
+  startPlatformSettingsMembershipAction(action: 'leave' | 'block'): void {
+    this.startActiveGroupMembershipAction(action);
+  }
+
+  openPlatformSettingsMember(member: GroupMemberItem): void {
+    this.closePlatformSettingsModal();
+    this.openMemberCall(member);
+  }
+
+  platformMemberIdentityLabel(member: GroupMemberItem): string {
+    return `ID: ${this.formatPublicUserId(member.publicId)} · ${member.roleLabel}`;
+  }
+
+  platformMemberPresenceLabel(member: GroupMemberItem): string {
+    let activePresence: MemberPresenceTone = 'inactive';
+    let activeChannelName: string | null = null;
+
+    for (const channel of this.voicePresence()) {
+      const participant = this.voiceParticipantsForChannel(channel.channel_id)
+        .find((entry) => entry.user_id === member.userId);
+      if (!participant) {
+        continue;
+      }
+
+      const presence: MemberPresenceTone = participant.owner_muted
+        ? 'blocked'
+        : participant.speaking
+          ? 'speaking'
+          : participant.muted
+            ? 'muted'
+            : 'open';
+
+      if (this.getPresenceWeight(presence) < this.getPresenceWeight(activePresence)) {
+        activePresence = presence;
+        activeChannelName = channel.channel_name;
+      }
+    }
+
+    if (activeChannelName) {
+      return this.formatVoiceActivityLabel(activePresence, activeChannelName);
+    }
+
+    return member.isOnline ? 'Онлайн' : 'Офлайн';
+  }
+
   openServerIconPicker(): void {
     if (!this.canManageActiveGroup() || this.isCompactVoiceWorkspaceViewport() || !this.activeServer()) {
       return;
