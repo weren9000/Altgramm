@@ -17,6 +17,7 @@ class ServerSummary(BaseModel):
     member_role: str
     kind: str = "workspace"
     unread_count: int = 0
+    mention_unread_count: int = 0
 
 
 class CreateServerRequest(BaseModel):
@@ -60,6 +61,8 @@ class ChannelSummary(BaseModel):
     position: int
     voice_access_role: str | None = None
     unread_count: int = 0
+    mention_unread_count: int = 0
+    first_unread_message_id: UUID | None = None
 
 
 class ServerMemberSummary(BaseModel):
@@ -169,6 +172,7 @@ class ChannelMessageSummary(BaseModel):
     attachments: list[MessageAttachmentSummary]
     reactions: list[MessageReactionSummary]
     read_by: list[MessageReadUserSummary] = Field(default_factory=list)
+    mentioned_user_ids: list[UUID] = Field(default_factory=list)
 
 
 class MessageReactionsSnapshot(BaseModel):

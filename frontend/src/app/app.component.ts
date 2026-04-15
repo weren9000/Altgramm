@@ -377,6 +377,8 @@ interface BrowserWakeLock {
 
 const SESSION_STORAGE_KEY = 'tescord.session';
 const MESSAGES_PAGE_SIZE = 25;
+const UNREAD_FOCUS_PAGE_PADDING = 24;
+const MAX_UNREAD_FOCUS_PAGE_SIZE = 200;
 const MAX_ATTACHMENT_SIZE_BYTES = 500 * 1024 * 1024;
 const MAX_INLINE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_PROFILE_AVATAR_DIMENSION = 300;
@@ -556,6 +558,7 @@ export class AppComponent {
   private pendingPushConversationId: string | null = null;
   private profileAvatarSelectionMode: 'instant' | 'editor' = 'instant';
   private profileAvatarPreviewObjectUrl: string | null = null;
+  private readonly openedUnreadAnchorMessageId = signal<string | null>(null);
 
   @ViewChild('messageList')
   private messageListRef?: ElementRef<HTMLElement>;
@@ -818,6 +821,7 @@ export class AppComponent {
       member_role: conversation.member_role,
       kind: conversation.kind,
       unread_count: conversation.unread_count,
+      mention_unread_count: 0,
     }))
   );
   readonly directConversationSpaces = computed<WorkspaceServer[]>(() =>
@@ -831,6 +835,7 @@ export class AppComponent {
       member_role: conversation.member_role,
       kind: conversation.kind,
       unread_count: conversation.unread_count,
+      mention_unread_count: 0,
     }))
   );
   readonly groupConversationSpaces = computed<WorkspaceServer[]>(() =>
@@ -844,6 +849,7 @@ export class AppComponent {
       member_role: conversation.member_role,
       kind: conversation.kind,
       unread_count: conversation.unread_count,
+      mention_unread_count: 0,
     }))
   );
   readonly currentSpaceList = computed<WorkspaceServer[]>(() =>
@@ -4762,7 +4768,7 @@ export class AppComponent {
 
     const token = this.session()?.access_token;
     if (token && (channel.type === 'text' || channel.type === 'voice') && (selectedChannelChanged || !this.messages().length)) {
-      this.loadMessagesForChannel(token, channel.id);
+      this.loadMessagesForChannel(token, channel.id, undefined, this.buildInitialChannelLoadOptions(channel));
     }
     this.syncMessageAutoRefreshPolling();
 
@@ -5571,11 +5577,15 @@ export class AppComponent {
     const isWorkspaceServer = this.servers().some((server) => server.id === event.server_id);
     const isOwnMessage = event.message.author.id === this.currentUser()?.id;
     const isSelectedConversation = event.server_id === this.selectedServerId();
+    const mentionsCurrentUser = this.messageMentionsUserId(event.message, this.currentUser()?.id);
 
     if (!isSelectedConversation) {
       if (!isOwnMessage) {
         if (isWorkspaceServer) {
           this.bumpServerUnreadCount(event.server_id);
+          if (mentionsCurrentUser) {
+            this.bumpServerMentionUnreadCount(event.server_id);
+          }
         } else {
           this.bumpConversationUnreadCount(event.server_id);
         }
@@ -5593,6 +5603,11 @@ export class AppComponent {
         if (isWorkspaceServer) {
           this.bumpChannelUnreadCount(event.message.channel_id);
           this.bumpServerUnreadCount(event.server_id);
+          this.setChannelFirstUnreadMessageIdIfMissing(event.message.channel_id, event.message.id);
+          if (mentionsCurrentUser) {
+            this.bumpChannelMentionUnreadCount(event.message.channel_id);
+            this.bumpServerMentionUnreadCount(event.server_id);
+          }
         } else {
           this.bumpConversationUnreadCount(event.server_id);
         }
@@ -5620,6 +5635,11 @@ export class AppComponent {
       if (isWorkspaceServer) {
         this.bumpChannelUnreadCount(event.message.channel_id);
         this.bumpServerUnreadCount(event.server_id);
+        this.setChannelFirstUnreadMessageIdIfMissing(event.message.channel_id, event.message.id);
+        if (mentionsCurrentUser) {
+          this.bumpChannelMentionUnreadCount(event.message.channel_id);
+          this.bumpServerMentionUnreadCount(event.server_id);
+        }
       } else {
         this.bumpConversationUnreadCount(event.server_id);
       }
@@ -5650,9 +5670,15 @@ export class AppComponent {
       const activeServer = this.activeServer();
       if (activeServer?.kind === 'workspace' && activeServer.id === event.server_id) {
         const channelUnreadCount = this.channels().find((channel) => channel.id === event.channel_id)?.unread_count ?? 0;
+        const channelMentionUnreadCount = this.channels().find((channel) => channel.id === event.channel_id)?.mention_unread_count ?? 0;
         this.setChannelUnreadCount(event.channel_id, 0);
+        this.setChannelMentionUnreadCount(event.channel_id, 0);
+        this.setChannelFirstUnreadMessageId(event.channel_id, null);
         if (channelUnreadCount > 0) {
           this.bumpServerUnreadCount(activeServer.id, -channelUnreadCount);
+        }
+        if (channelMentionUnreadCount > 0) {
+          this.bumpServerMentionUnreadCount(activeServer.id, -channelMentionUnreadCount);
         }
       } else {
         this.setConversationUnreadCountByChannelId(event.channel_id, 0);
@@ -5765,7 +5791,12 @@ export class AppComponent {
 
     if (nextSelectedChannel.type === 'text' || nextSelectedChannel.type === 'voice') {
       if (selectedChannelChanged) {
-        this.loadMessagesForChannel(token, nextSelectedChannel.id);
+        this.loadMessagesForChannel(
+          token,
+          nextSelectedChannel.id,
+          undefined,
+          this.buildInitialChannelLoadOptions(nextSelectedChannel),
+        );
       }
     } else if (selectedChannelChanged) {
       this.resetTextChannelState();
@@ -5781,7 +5812,9 @@ export class AppComponent {
     }
 
     const unreadCount = channels.reduce((total, channel) => total + Math.max(0, channel.unread_count ?? 0), 0);
+    const mentionUnreadCount = channels.reduce((total, channel) => total + Math.max(0, channel.mention_unread_count ?? 0), 0);
     this.setServerUnreadCount(activeServer.id, unreadCount);
+    this.setServerMentionUnreadCount(activeServer.id, mentionUnreadCount);
   }
 
   private applyMembersSnapshot(members: WorkspaceMember[]): void {
@@ -6425,7 +6458,28 @@ export class AppComponent {
     return typeof window !== 'undefined' && window.matchMedia('(max-width: 920px)').matches;
   }
 
-  private loadMessagesForChannel(token: string, channelId: string, before?: string | null): void {
+  private buildInitialChannelLoadOptions(channel: WorkspaceChannel): { focusMessageId?: string | null; limit?: number } {
+    const focusMessageId = channel.first_unread_message_id;
+    const unreadCount = this.channelUnreadCount(channel);
+    if (!focusMessageId || unreadCount <= 0) {
+      return {};
+    }
+
+    return {
+      focusMessageId,
+      limit: Math.min(
+        MAX_UNREAD_FOCUS_PAGE_SIZE,
+        Math.max(MESSAGES_PAGE_SIZE, unreadCount * 2 + UNREAD_FOCUS_PAGE_PADDING),
+      ),
+    };
+  }
+
+  private loadMessagesForChannel(
+    token: string,
+    channelId: string,
+    before?: string | null,
+    options: { focusMessageId?: string | null; limit?: number } = {},
+  ): void {
     const isLoadingMore = Boolean(before);
     const listElement = this.messageListRef?.nativeElement;
     const previousScrollHeight = listElement?.scrollHeight ?? 0;
@@ -6444,10 +6498,11 @@ export class AppComponent {
       this.messagesHasMore.set(false);
       this.messagesCursor.set(null);
       this.messageError.set(null);
+      this.openedUnreadAnchorMessageId.set(options.focusMessageId ?? null);
     }
 
     this.workspaceApi
-      .getMessages(token, channelId, MESSAGES_PAGE_SIZE, before)
+      .getMessages(token, channelId, options.limit ?? MESSAGES_PAGE_SIZE, before, options.focusMessageId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (page) => {
@@ -6471,7 +6526,12 @@ export class AppComponent {
           if (isLoadingMore) {
             this.restoreMessageScrollPosition(previousScrollHeight, previousScrollTop);
           } else {
-            this.scrollMessagesToBottom();
+            const focusMessageId = options.focusMessageId ?? null;
+            if (focusMessageId && page.items.some((message) => message.id === focusMessageId)) {
+              this.scrollMessageIntoView(focusMessageId);
+            } else {
+              this.scrollMessagesToBottom();
+            }
             const latestMessage = page.items.length ? page.items[page.items.length - 1] : null;
             this.markChannelAsRead(channelId, latestMessage?.id ?? null);
           }
@@ -6722,6 +6782,7 @@ export class AppComponent {
     if (selectedChannelId) {
       this.lastMarkedReadMessageIdByChannel.delete(selectedChannelId);
     }
+    this.openedUnreadAnchorMessageId.set(null);
     this.messages.set([]);
     this.clearAttachmentPreviews();
     this.openedMessageReactionPickerId.set(null);
@@ -6823,6 +6884,23 @@ export class AppComponent {
     });
   }
 
+  private scrollMessageIntoView(messageId: string): void {
+    requestAnimationFrame(() => {
+      const element = this.messageListRef?.nativeElement;
+      if (!element) {
+        return;
+      }
+
+      const messageElement = element.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
+      if (!messageElement) {
+        element.scrollTop = element.scrollHeight;
+        return;
+      }
+
+      messageElement.scrollIntoView({ block: 'center' });
+    });
+  }
+
   private restoreMessageScrollPosition(previousScrollHeight: number, previousScrollTop: number): void {
     requestAnimationFrame(() => {
       const element = this.messageListRef?.nativeElement;
@@ -6870,9 +6948,15 @@ export class AppComponent {
     const activeServer = this.activeServer();
     if (activeServer?.kind === 'workspace') {
       const channelUnreadCount = this.channels().find((channel) => channel.id === channelId)?.unread_count ?? 0;
+      const channelMentionUnreadCount = this.channels().find((channel) => channel.id === channelId)?.mention_unread_count ?? 0;
       this.setChannelUnreadCount(channelId, 0);
+      this.setChannelMentionUnreadCount(channelId, 0);
+      this.setChannelFirstUnreadMessageId(channelId, null);
       if (channelUnreadCount > 0) {
         this.bumpServerUnreadCount(activeServer.id, -channelUnreadCount);
+      }
+      if (channelMentionUnreadCount > 0) {
+        this.bumpServerMentionUnreadCount(activeServer.id, -channelMentionUnreadCount);
       }
     } else {
       this.setConversationUnreadCountByChannelId(channelId, 0);
@@ -7360,6 +7444,7 @@ export class AppComponent {
       member_role: conversation.member_role,
       kind: conversation.kind,
       unread_count: conversation.unread_count,
+      mention_unread_count: 0,
     }));
   }
 
@@ -7585,6 +7670,15 @@ export class AppComponent {
     return unreadCount > 99 ? '99+' : String(unreadCount);
   }
 
+  platformMentionUnreadCount(server: WorkspaceServer): number {
+    return Math.max(0, server.mention_unread_count ?? 0);
+  }
+
+  platformMentionUnreadBadgeLabel(server: WorkspaceServer): string {
+    const mentionUnreadCount = this.platformMentionUnreadCount(server);
+    return mentionUnreadCount > 99 ? '99+' : String(mentionUnreadCount);
+  }
+
   channelUnreadCount(channel: WorkspaceChannel): number {
     return Math.max(0, channel.unread_count ?? 0);
   }
@@ -7592,6 +7686,28 @@ export class AppComponent {
   channelUnreadBadgeLabel(channel: WorkspaceChannel): string {
     const unreadCount = this.channelUnreadCount(channel);
     return unreadCount > 99 ? '99+' : String(unreadCount);
+  }
+
+  channelMentionUnreadCount(channel: WorkspaceChannel): number {
+    return Math.max(0, channel.mention_unread_count ?? 0);
+  }
+
+  channelMentionUnreadBadgeLabel(channel: WorkspaceChannel): string {
+    const mentionUnreadCount = this.channelMentionUnreadCount(channel);
+    return mentionUnreadCount > 99 ? '99+' : String(mentionUnreadCount);
+  }
+
+  messageMentionsCurrentUser(message: WorkspaceMessage): boolean {
+    const currentUserId = this.currentUser()?.id;
+    if (!currentUserId) {
+      return false;
+    }
+
+    return message.mentioned_user_ids.includes(currentUserId);
+  }
+
+  shouldShowUnreadDivider(message: WorkspaceMessage): boolean {
+    return this.openedUnreadAnchorMessageId() === message.id;
   }
 
   activeConversationPushIcon(): string {
@@ -7674,6 +7790,14 @@ export class AppComponent {
     }
 
     return 'Новое сообщение';
+  }
+
+  private messageMentionsUserId(message: WorkspaceMessage, userId: string | null | undefined): boolean {
+    if (!userId) {
+      return false;
+    }
+
+    return message.mentioned_user_ids.includes(userId);
   }
 
   directConversationById(conversationId: string): ConversationSummary | null {
@@ -7779,6 +7903,20 @@ export class AppComponent {
     );
   }
 
+  private setServerMentionUnreadCount(serverId: string, mentionUnreadCount: number): void {
+    const normalizedMentionUnreadCount = Math.max(0, mentionUnreadCount);
+    this.servers.update((servers) =>
+      servers.map((server) =>
+        server.id === serverId
+          ? {
+              ...server,
+              mention_unread_count: normalizedMentionUnreadCount,
+            }
+          : server
+      )
+    );
+  }
+
   private setChannelUnreadCount(channelId: string, unreadCount: number): void {
     const normalizedUnreadCount = Math.max(0, unreadCount);
     this.channels.update((channels) =>
@@ -7787,6 +7925,46 @@ export class AppComponent {
           ? {
               ...channel,
               unread_count: normalizedUnreadCount,
+            }
+          : channel
+      )
+    );
+  }
+
+  private setChannelMentionUnreadCount(channelId: string, mentionUnreadCount: number): void {
+    const normalizedMentionUnreadCount = Math.max(0, mentionUnreadCount);
+    this.channels.update((channels) =>
+      channels.map((channel) =>
+        channel.id === channelId
+          ? {
+              ...channel,
+              mention_unread_count: normalizedMentionUnreadCount,
+            }
+          : channel
+      )
+    );
+  }
+
+  private setChannelFirstUnreadMessageId(channelId: string, messageId: string | null): void {
+    this.channels.update((channels) =>
+      channels.map((channel) =>
+        channel.id === channelId
+          ? {
+              ...channel,
+              first_unread_message_id: messageId,
+            }
+          : channel
+      )
+    );
+  }
+
+  private setChannelFirstUnreadMessageIdIfMissing(channelId: string, messageId: string): void {
+    this.channels.update((channels) =>
+      channels.map((channel) =>
+        channel.id === channelId && !channel.first_unread_message_id
+          ? {
+              ...channel,
+              first_unread_message_id: messageId,
             }
           : channel
       )
@@ -7810,6 +7988,23 @@ export class AppComponent {
     );
   }
 
+  private bumpServerMentionUnreadCount(serverId: string, delta = 1): void {
+    if (!delta) {
+      return;
+    }
+
+    this.servers.update((servers) =>
+      servers.map((server) =>
+        server.id === serverId
+          ? {
+              ...server,
+              mention_unread_count: Math.max(0, (server.mention_unread_count ?? 0) + delta),
+            }
+          : server
+      )
+    );
+  }
+
   private bumpChannelUnreadCount(channelId: string, delta = 1): void {
     if (!delta) {
       return;
@@ -7821,6 +8016,23 @@ export class AppComponent {
           ? {
               ...channel,
               unread_count: Math.max(0, (channel.unread_count ?? 0) + delta),
+            }
+          : channel
+      )
+    );
+  }
+
+  private bumpChannelMentionUnreadCount(channelId: string, delta = 1): void {
+    if (!delta) {
+      return;
+    }
+
+    this.channels.update((channels) =>
+      channels.map((channel) =>
+        channel.id === channelId
+          ? {
+              ...channel,
+              mention_unread_count: Math.max(0, (channel.mention_unread_count ?? 0) + delta),
             }
           : channel
       )

@@ -388,10 +388,19 @@ export class WorkspaceApiService {
     });
   }
 
-  getMessages(token: string, channelId: string, limit: number, before?: string | null): Observable<WorkspaceMessagePage> {
+  getMessages(
+    token: string,
+    channelId: string,
+    limit: number,
+    before?: string | null,
+    fromMessageId?: string | null,
+  ): Observable<WorkspaceMessagePage> {
     let params = new HttpParams().set('limit', limit);
     if (before) {
       params = params.set('before', before);
+    }
+    if (fromMessageId) {
+      params = params.set('from', fromMessageId);
     }
 
     return this.http.get<WorkspaceMessagePage>(`${API_BASE_URL}/api/channels/${channelId}/messages`, {

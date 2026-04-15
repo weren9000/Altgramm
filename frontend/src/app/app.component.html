@@ -351,6 +351,9 @@
                   <div class="sidebar-entry__copy">
                     <div class="sidebar-entry__headline">
                       <strong>{{ space.name }}</strong>
+                      @if (platformMentionUnreadCount(space) > 0) {
+                        <span class="sidebar-entry__unread-badge" style="background:rgba(255,114,149,0.16);color:#ffd8e6;">&#64;{{ platformMentionUnreadBadgeLabel(space) }}</span>
+                      }
                       @if (platformUnreadCount(space) > 0) {
                         <span class="sidebar-entry__unread-badge">{{ platformUnreadBadgeLabel(space) }}</span>
                       }
@@ -533,6 +536,9 @@
                           <div class="platform-channel-entry__copy">
                             <div class="platform-channel-entry__headline">
                               <strong># {{ channel.name }}</strong>
+                              @if (channelMentionUnreadCount(channel) > 0) {
+                                <span class="platform-channel-entry__unread-badge" style="background:rgba(255,114,149,0.16);color:#ffd8e6;">&#64;{{ channelMentionUnreadBadgeLabel(channel) }}</span>
+                              }
                               @if (channelUnreadCount(channel) > 0) {
                                 <span class="platform-channel-entry__unread-badge">{{ channelUnreadBadgeLabel(channel) }}</span>
                               }
@@ -575,6 +581,9 @@
                             <div class="platform-channel-entry__copy">
                               <div class="platform-channel-entry__headline">
                                 <strong>{{ channel.name }}</strong>
+                                @if (channelMentionUnreadCount(channel) > 0) {
+                                  <span class="platform-channel-entry__unread-badge" style="background:rgba(255,114,149,0.16);color:#ffd8e6;">&#64;{{ channelMentionUnreadBadgeLabel(channel) }}</span>
+                                }
                                 @if (channelUnreadCount(channel) > 0) {
                                   <span class="platform-channel-entry__unread-badge">{{ channelUnreadBadgeLabel(channel) }}</span>
                                 }
@@ -770,7 +779,19 @@
 
                   @if (messages().length) {
                     @for (message of messages(); track message.id) {
-                      <article class="message-card" [class.message-card--self]="message.author.id === currentUser()?.id">
+                      @if (shouldShowUnreadDivider(message)) {
+                        <div style="display:flex;align-items:center;gap:10px;margin:4px 0;">
+                          <span style="flex:1 1 auto;height:1px;background:rgba(255,114,149,0.18);"></span>
+                          <span style="color:rgba(255,214,225,0.88);font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Непрочитанные</span>
+                          <span style="flex:1 1 auto;height:1px;background:rgba(255,114,149,0.18);"></span>
+                        </div>
+                      }
+                      <article
+                        class="message-card"
+                        [attr.data-message-id]="message.id"
+                        [class.message-card--self]="message.author.id === currentUser()?.id"
+                        [style.box-shadow]="messageMentionsCurrentUser(message) ? 'inset 2px 0 0 rgba(255,114,149,0.4)' : null"
+                      >
                         <div
                           class="message-card__avatar"
                           [style.--avatar-accent]="message.author.id === currentUser()?.id ? '#9dfd38' : '#3dd6c6'"
@@ -786,6 +807,9 @@
                             <div class="message-card__author">
                               <strong>{{ displayNick(message.author.nick) }}</strong>
                               <span>ID: {{ formatPublicUserId(message.author.public_id) }}</span>
+                              @if (messageMentionsCurrentUser(message)) {
+                                <span style="display:inline-flex;align-items:center;justify-content:center;min-height:18px;padding:0 6px;border-radius:999px;background:rgba(255,114,149,0.14);color:#ffd8e6;font-size:0.58rem;font-weight:700;line-height:1;">&#64; вас</span>
+                              }
                             </div>
                             <time>{{ formatMessageTime(message.created_at) }}</time>
                           </div>

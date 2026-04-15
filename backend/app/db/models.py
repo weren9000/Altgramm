@@ -108,6 +108,10 @@ class User(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    message_mentions: Mapped[list["MessageMention"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     created_channels: Mapped[list["Channel"]] = relationship(back_populates="created_by")
     voice_permissions: Mapped[list["VoiceChannelAccess"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     requested_voice_joins: Mapped[list["VoiceJoinRequest"]] = relationship(
@@ -373,6 +377,10 @@ class Message(TimestampMixin, Base):
         back_populates="message",
         cascade="all, delete-orphan",
     )
+    mentions: Mapped[list["MessageMention"]] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
+    )
     read_states: Mapped[list["ChannelReadState"]] = relationship(
         back_populates="last_read_message",
     )
@@ -414,6 +422,23 @@ class MessageReaction(TimestampMixin, Base):
 
     message: Mapped["Message"] = relationship(back_populates="reactions")
     user: Mapped["User"] = relationship(back_populates="message_reactions")
+
+
+class MessageMention(Base):
+    __tablename__ = "message_mentions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", name="uq_message_mentions_message_user"),
+        Index("ix_message_mentions_user_id", "user_id"),
+        Index("ix_message_mentions_message_id", "message_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    message: Mapped["Message"] = relationship(back_populates="mentions")
+    user: Mapped["User"] = relationship(back_populates="message_mentions")
 
 
 class ChannelReadState(Base):

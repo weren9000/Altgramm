@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Channel, ChannelReadState, ChannelType, Message, ServerMember, User
+from app.db.models import Channel, ChannelReadState, ChannelType, Message, MessageMention, ServerMember, User
 from app.schemas.workspace import (
     ChannelSummary,
     ServerMemberSummary,
@@ -22,6 +23,8 @@ def _build_channel_summary(
     channel: Channel,
     voice_access_role: str | None = None,
     unread_count: int = 0,
+    mention_unread_count: int = 0,
+    first_unread_message_id: UUID | None = None,
 ) -> ChannelSummary:
     return ChannelSummary(
         id=channel.id,
@@ -32,6 +35,8 @@ def _build_channel_summary(
         position=channel.position,
         voice_access_role=voice_access_role,
         unread_count=max(0, unread_count),
+        mention_unread_count=max(0, mention_unread_count),
+        first_unread_message_id=first_unread_message_id,
     )
 
 
@@ -78,15 +83,15 @@ def _build_voice_channel_presence_summary(
     )
 
 
-def load_unread_counts_by_channel_id(
-    db: Session,
-    channel_ids: list[UUID],
-    current_user_id: UUID,
-) -> dict[UUID, int]:
-    if not channel_ids:
-        return {}
+@dataclass(slots=True, frozen=True)
+class ChannelUnreadState:
+    unread_count: int = 0
+    mention_unread_count: int = 0
+    first_unread_message_id: UUID | None = None
 
-    last_read_state_subquery = (
+
+def _build_last_read_state_subquery(channel_ids: list[UUID], current_user_id: UUID):
+    return (
         select(
             ChannelReadState.channel_id.label("channel_id"),
             Message.created_at.label("last_read_created_at"),
@@ -101,27 +106,80 @@ def load_unread_counts_by_channel_id(
         .subquery()
     )
 
+
+def _build_unread_message_condition(last_read_state_subquery):
+    return or_(
+        last_read_state_subquery.c.last_read_created_at.is_(None),
+        Message.created_at > last_read_state_subquery.c.last_read_created_at,
+        and_(
+            Message.created_at == last_read_state_subquery.c.last_read_created_at,
+            Message.id > last_read_state_subquery.c.last_read_message_id,
+        ),
+    )
+
+
+def load_unread_states_by_channel_id(
+    db: Session,
+    channel_ids: list[UUID],
+    current_user_id: UUID,
+) -> dict[UUID, ChannelUnreadState]:
+    if not channel_ids:
+        return {}
+
+    last_read_state_subquery = _build_last_read_state_subquery(channel_ids, current_user_id)
+    unread_condition = _build_unread_message_condition(last_read_state_subquery)
+    unread_state_by_channel_id = {
+        channel_id: ChannelUnreadState()
+        for channel_id in channel_ids
+    }
+
     unread_rows = db.execute(
-        select(Message.channel_id, func.count(Message.id))
+        select(Message.channel_id, Message.id)
         .select_from(Message)
         .outerjoin(last_read_state_subquery, last_read_state_subquery.c.channel_id == Message.channel_id)
         .where(
             Message.channel_id.in_(channel_ids),
             Message.author_id != current_user_id,
-            or_(
-                last_read_state_subquery.c.last_read_created_at.is_(None),
-                Message.created_at > last_read_state_subquery.c.last_read_created_at,
-                and_(
-                    Message.created_at == last_read_state_subquery.c.last_read_created_at,
-                    Message.id > last_read_state_subquery.c.last_read_message_id,
-                ),
-            ),
+            unread_condition,
+        )
+        .order_by(Message.channel_id, Message.created_at, Message.id)
+    ).all()
+    unread_counts_by_channel_id = {channel_id: 0 for channel_id in channel_ids}
+    first_unread_message_id_by_channel_id: dict[UUID, UUID | None] = {
+        channel_id: None
+        for channel_id in channel_ids
+    }
+    for channel_id, message_id in unread_rows:
+        unread_counts_by_channel_id[channel_id] = unread_counts_by_channel_id.get(channel_id, 0) + 1
+        if first_unread_message_id_by_channel_id[channel_id] is None:
+            first_unread_message_id_by_channel_id[channel_id] = message_id
+
+    mention_rows = db.execute(
+        select(Message.channel_id, func.count(MessageMention.id))
+        .select_from(MessageMention)
+        .join(Message, Message.id == MessageMention.message_id)
+        .outerjoin(last_read_state_subquery, last_read_state_subquery.c.channel_id == Message.channel_id)
+        .where(
+            Message.channel_id.in_(channel_ids),
+            MessageMention.user_id == current_user_id,
+            Message.author_id != current_user_id,
+            unread_condition,
         )
         .group_by(Message.channel_id)
     ).all()
+    mention_counts_by_channel_id = {
+        channel_id: count
+        for channel_id, count in mention_rows
+    }
 
-    unread_counts = {channel_id: count for channel_id, count in unread_rows}
-    return {channel_id: unread_counts.get(channel_id, 0) for channel_id in channel_ids}
+    for channel_id in channel_ids:
+        unread_state_by_channel_id[channel_id] = ChannelUnreadState(
+            unread_count=unread_counts_by_channel_id.get(channel_id, 0),
+            mention_unread_count=mention_counts_by_channel_id.get(channel_id, 0),
+            first_unread_message_id=first_unread_message_id_by_channel_id.get(channel_id),
+        )
+
+    return unread_state_by_channel_id
 
 
 def list_server_channels_for_user(
@@ -137,7 +195,7 @@ def list_server_channels_for_user(
     ).scalars().all()
     voice_channel_ids = [channel.id for channel in channels if channel.type == ChannelType.VOICE]
     voice_access_map = list_voice_channel_access_map(db, voice_channel_ids, user_id)
-    unread_counts_by_channel_id = load_unread_counts_by_channel_id(
+    unread_states_by_channel_id = load_unread_states_by_channel_id(
         db,
         [channel.id for channel in channels],
         user_id,
@@ -149,7 +207,9 @@ def list_server_channels_for_user(
             visible_channels.append(
                 _build_channel_summary(
                     channel,
-                    unread_count=unread_counts_by_channel_id.get(channel.id, 0),
+                    unread_count=unread_states_by_channel_id.get(channel.id, ChannelUnreadState()).unread_count,
+                    mention_unread_count=unread_states_by_channel_id.get(channel.id, ChannelUnreadState()).mention_unread_count,
+                    first_unread_message_id=unread_states_by_channel_id.get(channel.id, ChannelUnreadState()).first_unread_message_id,
                 )
             )
             continue
@@ -161,7 +221,9 @@ def list_server_channels_for_user(
                 _build_channel_summary(
                     channel,
                     effective_role.value if effective_role is not None else None,
-                    unread_counts_by_channel_id.get(channel.id, 0),
+                    unread_states_by_channel_id.get(channel.id, ChannelUnreadState()).unread_count,
+                    unread_states_by_channel_id.get(channel.id, ChannelUnreadState()).mention_unread_count,
+                    unread_states_by_channel_id.get(channel.id, ChannelUnreadState()).first_unread_message_id,
                 )
             )
 

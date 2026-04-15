@@ -949,6 +949,98 @@ def test_text_messages_endpoint_supports_lazy_loading() -> None:
     )
 
 
+def test_workspace_unread_summary_tracks_mentions_and_first_unread_anchor() -> None:
+    suffix = uuid4().hex[:6]
+
+    with TestClient(app) as client:
+        admin_token = login_admin_user(client)
+        regular_token, payload = register_regular_user(client)
+        regular_profile = get_current_user_profile(client, regular_token)
+        group, channel = create_temp_text_channel(client, admin_token, suffix)
+
+        try:
+            add_member_response = client.post(
+                f"/api/servers/{group['id']}/members",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={"user_public_id": regular_profile["public_id"]},
+            )
+            assert add_member_response.status_code == 200
+
+            first_message_response = client.post(
+                f"/api/channels/{channel['id']}/messages",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                data={"content": "Первое непрочитанное"},
+            )
+            assert first_message_response.status_code == 201
+            first_message = first_message_response.json()
+
+            mention_message_response = client.post(
+                f"/api/channels/{channel['id']}/messages",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                data={"content": f"Привет @{regular_profile['public_id']}"},
+            )
+            assert mention_message_response.status_code == 201
+            mention_message = mention_message_response.json()
+
+            servers_response = client.get(
+                "/api/servers",
+                headers={"Authorization": f"Bearer {regular_token}"},
+            )
+            channels_response = client.get(
+                f"/api/servers/{group['id']}/channels",
+                headers={"Authorization": f"Bearer {regular_token}"},
+            )
+            anchored_messages_response = client.get(
+                f"/api/channels/{channel['id']}/messages?limit=10&from={first_message['id']}",
+                headers={"Authorization": f"Bearer {regular_token}"},
+            )
+
+            mark_read_response = client.post(
+                f"/api/channels/{channel['id']}/read",
+                headers={"Authorization": f"Bearer {regular_token}"},
+                json={"last_message_id": mention_message["id"]},
+            )
+            assert mark_read_response.status_code == 200
+
+            refreshed_servers_response = client.get(
+                "/api/servers",
+                headers={"Authorization": f"Bearer {regular_token}"},
+            )
+            refreshed_channels_response = client.get(
+                f"/api/servers/{group['id']}/channels",
+                headers={"Authorization": f"Bearer {regular_token}"},
+            )
+        finally:
+            delete_server(group["id"])
+            delete_user(payload["email"])
+
+    assert servers_response.status_code == 200
+    listed_server = next(item for item in servers_response.json() if item["id"] == group["id"])
+    assert listed_server["unread_count"] == 2
+    assert listed_server["mention_unread_count"] == 1
+
+    assert channels_response.status_code == 200
+    listed_channel = next(item for item in channels_response.json() if item["id"] == channel["id"])
+    assert listed_channel["unread_count"] == 2
+    assert listed_channel["mention_unread_count"] == 1
+    assert listed_channel["first_unread_message_id"] == first_message["id"]
+
+    assert anchored_messages_response.status_code == 200
+    anchored_page = anchored_messages_response.json()
+    assert [message["id"] for message in anchored_page["items"]] == [first_message["id"], mention_message["id"]]
+    assert anchored_page["has_more"] is False
+    assert mention_message["mentioned_user_ids"] == [regular_profile["id"]]
+
+    refreshed_server = next(item for item in refreshed_servers_response.json() if item["id"] == group["id"])
+    assert refreshed_server["unread_count"] == 0
+    assert refreshed_server["mention_unread_count"] == 0
+
+    refreshed_channel = next(item for item in refreshed_channels_response.json() if item["id"] == channel["id"])
+    assert refreshed_channel["unread_count"] == 0
+    assert refreshed_channel["mention_unread_count"] == 0
+    assert refreshed_channel["first_unread_message_id"] is None
+
+
 def test_can_send_message_with_attachment_and_download_it() -> None:
     suffix = uuid4().hex[:6]
 

@@ -19,6 +19,7 @@ from app.db.models import (
     ChannelReadState,
     ChannelType,
     Message,
+    MessageMention,
     MessageReaction,
     MessageReactionKind,
     MessageType,
@@ -55,13 +56,14 @@ from app.services.attachment_storage import (
     store_upload_file,
 )
 from app.services.push_notifications import publish_message_push_notifications
+from app.services.message_mentions import resolve_message_mention_user_ids
 from app.services.server_access import ensure_channel_server_access
 from app.services.voice_access import can_view_voice_channel, get_voice_channel_access
 
 router = APIRouter(tags=["messages"])
 
 DEFAULT_PAGE_SIZE = 25
-MAX_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 200
 MAX_ATTACHMENT_SIZE_BYTES = 500 * 1024 * 1024
 ATTACHMENT_DOWNLOAD_LINK_EXPIRE_SECONDS = 180
 ATTACHMENT_DOWNLOAD_TOKEN_TYPE = "attachment_download"
@@ -180,6 +182,7 @@ def _build_message_summary(message: Message, current_user_id: UUID) -> ChannelMe
         attachments=[_build_attachment_summary(attachment) for attachment in message.attachments],
         reactions=_build_reaction_summaries(message, current_user_id),
         read_by=read_by,
+        mentioned_user_ids=[mention.user_id for mention in message.mentions],
     )
 
 
@@ -291,6 +294,7 @@ def _message_load_options():
         reply_attachment_summary_load,
         attachment_summary_load,
         selectinload(Message.reactions),
+        selectinload(Message.mentions),
         selectinload(Message.read_states).joinedload(ChannelReadState.user),
     )
 
@@ -471,11 +475,53 @@ def _resolve_target_read_message(
 def list_channel_messages(
     channel_id: UUID,
     before: UUID | None = Query(default=None),
+    from_message_id: UUID | None = Query(default=None, alias="from"),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChannelMessagesPage:
     channel = _get_accessible_message_channel(db, channel_id, current_user)
+    if before is not None and from_message_id is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Нельзя одновременно использовать before и from")
+
+    if from_message_id is not None:
+        anchor_message = db.get(Message, from_message_id)
+        if anchor_message is None or anchor_message.channel_id != channel.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сообщение-якорь не найдено")
+
+        page_rows = db.execute(
+            select(Message)
+            .where(
+                Message.channel_id == channel.id,
+                or_(
+                    Message.created_at > anchor_message.created_at,
+                    and_(Message.created_at == anchor_message.created_at, Message.id >= anchor_message.id),
+                ),
+            )
+            .options(*_message_load_options())
+            .order_by(Message.created_at.asc(), Message.id.asc())
+            .limit(limit)
+        ).unique().scalars().all()
+
+        first_visible_message = page_rows[0] if page_rows else anchor_message
+        has_more = db.execute(
+            select(Message.id)
+            .where(
+                Message.channel_id == channel.id,
+                or_(
+                    Message.created_at < first_visible_message.created_at,
+                    and_(Message.created_at == first_visible_message.created_at, Message.id < first_visible_message.id),
+                ),
+            )
+            .limit(1)
+        ).scalar_one_or_none() is not None
+        next_before = first_visible_message.id if has_more else None
+
+        return ChannelMessagesPage(
+            items=[_build_message_summary(message, current_user.id) for message in page_rows],
+            has_more=has_more,
+            next_before=next_before,
+        )
 
     statement = (
         select(Message)
@@ -542,6 +588,20 @@ async def create_channel_message(
     )
     db.add(message)
     db.flush()
+
+    mentioned_user_ids = resolve_message_mention_user_ids(
+        db,
+        channel.server_id,
+        normalized_content,
+        author_user_id=current_user.id,
+    )
+    for mentioned_user_id in mentioned_user_ids:
+        db.add(
+            MessageMention(
+                message_id=message.id,
+                user_id=mentioned_user_id,
+            )
+        )
 
     created_storage_paths: list[str] = []
     try:

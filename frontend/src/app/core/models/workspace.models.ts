@@ -18,6 +18,7 @@ export interface WorkspaceServer {
   member_role: string;
   kind: 'workspace' | 'direct' | 'group_chat';
   unread_count: number;
+  mention_unread_count: number;
 }
 
 export interface WorkspaceChannel {
@@ -29,6 +30,8 @@ export interface WorkspaceChannel {
   position: number;
   voice_access_role: 'owner' | 'resident' | 'guest' | 'stranger' | null;
   unread_count: number;
+  mention_unread_count: number;
+  first_unread_message_id: string | null;
 }
 
 export interface WorkspaceMember {
@@ -167,6 +170,7 @@ export interface WorkspaceMessage {
   attachments: WorkspaceMessageAttachment[];
   reactions: WorkspaceMessageReaction[];
   read_by: WorkspaceMessageReadUser[];
+  mentioned_user_ids: string[];
 }
 
 export interface WorkspaceMessagePage {

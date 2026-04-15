@@ -57,7 +57,12 @@ def _slugify(value: str) -> str:
     return slug or "group"
 
 
-def _build_server_summary(server: Server, role: MemberRole, unread_count: int = 0) -> ServerSummary:
+def _build_server_summary(
+    server: Server,
+    role: MemberRole,
+    unread_count: int = 0,
+    mention_unread_count: int = 0,
+) -> ServerSummary:
     return ServerSummary(
         id=server.id,
         name=server.name,
@@ -68,6 +73,7 @@ def _build_server_summary(server: Server, role: MemberRole, unread_count: int = 
         member_role=role.value,
         kind=server.kind.value,
         unread_count=max(0, unread_count),
+        mention_unread_count=max(0, mention_unread_count),
     )
 
 
@@ -75,6 +81,8 @@ def _build_channel_summary(
     channel: Channel,
     voice_access_role: str | None = None,
     unread_count: int = 0,
+    mention_unread_count: int = 0,
+    first_unread_message_id: UUID | None = None,
 ) -> ChannelSummary:
     return ChannelSummary(
         id=channel.id,
@@ -85,6 +93,8 @@ def _build_channel_summary(
         position=channel.position,
         voice_access_role=voice_access_role,
         unread_count=max(0, unread_count),
+        mention_unread_count=max(0, mention_unread_count),
+        first_unread_message_id=first_unread_message_id,
     )
 
 
@@ -218,7 +228,8 @@ def list_servers(current_user: User = Depends(get_current_user), db: Session = D
     for server in servers:
         visible_channels = list_server_channels_for_user(db, server.id, current_user.id)
         unread_count = sum(channel.unread_count for channel in visible_channels)
-        summaries.append(_build_server_summary(server, member_roles[server.id], unread_count))
+        mention_unread_count = sum(channel.mention_unread_count for channel in visible_channels)
+        summaries.append(_build_server_summary(server, member_roles[server.id], unread_count, mention_unread_count))
 
     return summaries
 
