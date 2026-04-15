@@ -188,6 +188,16 @@ export interface WorkspaceMessage {
   mentioned_user_ids: string[];
 }
 
+export interface WorkspaceMessageSearchResult {
+  id: string;
+  channel_id: string;
+  content: string;
+  created_at: string;
+  author: WorkspaceMessageAuthor;
+  attachments_count: number;
+  mentioned_user_ids: string[];
+}
+
 export interface WorkspaceMessagePage {
   items: WorkspaceMessage[];
   has_more: boolean;

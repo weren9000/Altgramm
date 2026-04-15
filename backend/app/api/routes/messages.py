@@ -30,6 +30,7 @@ from app.db.models import (
 from app.db.session import get_db
 from app.schemas.workspace import (
     ChatAttachmentSummary,
+    ChannelMessageSearchSummary,
     ChannelMessageSummary,
     ChannelMessagesPage,
     ChannelReadStateSummary,
@@ -186,6 +187,18 @@ def _build_message_summary(message: Message, current_user_id: UUID) -> ChannelMe
     )
 
 
+def _build_message_search_summary(message: Message) -> ChannelMessageSearchSummary:
+    return ChannelMessageSearchSummary(
+        id=message.id,
+        channel_id=message.channel_id,
+        content=message.content,
+        created_at=message.created_at,
+        author=_build_author_summary(message.author),
+        attachments_count=len(message.attachments),
+        mentioned_user_ids=[mention.user_id for mention in message.mentions],
+    )
+
+
 def _build_message_reactions_snapshot(message: Message, current_user_id: UUID) -> MessageReactionsSnapshot:
     return MessageReactionsSnapshot(
         message_id=message.id,
@@ -238,6 +251,10 @@ def _sanitize_filename(filename: str | None) -> str:
 
 def _message_sort_key(message: Message) -> tuple[datetime, str]:
     return message.created_at.astimezone(timezone.utc), str(message.id)
+
+
+def _escape_like_term(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _get_accessible_message_channel(db: Session, channel_id: UUID, current_user: User) -> Channel:
@@ -566,6 +583,39 @@ def list_channel_messages(
         has_more=has_more,
         next_before=next_before,
     )
+
+
+@router.get("/channels/{channel_id}/messages/search", response_model=list[ChannelMessageSearchSummary])
+def search_channel_messages(
+    channel_id: UUID,
+    query: str = Query(min_length=1, max_length=120),
+    limit: int = Query(default=20, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ChannelMessageSearchSummary]:
+    channel = _get_accessible_message_channel(db, channel_id, current_user)
+    terms = [part for part in query.strip().split() if part]
+    if not terms:
+        return []
+
+    filters = [
+        Message.content.ilike(f"%{_escape_like_term(term)}%", escape="\\")
+        for term in terms
+    ]
+
+    rows = db.execute(
+        select(Message)
+        .where(
+            Message.channel_id == channel.id,
+            Message.type == MessageType.TEXT,
+            *filters,
+        )
+        .options(*_message_load_options())
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(limit)
+    ).unique().scalars().all()
+
+    return [_build_message_search_summary(message) for message in rows]
 
 
 @router.post("/channels/{channel_id}/messages", response_model=ChannelMessageSummary, status_code=status.HTTP_201_CREATED)

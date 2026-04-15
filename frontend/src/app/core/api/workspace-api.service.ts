@@ -35,6 +35,7 @@ import {
   WorkspaceAttachmentDownloadLink,
   WorkspaceChatAttachmentSummary,
   WorkspaceMessage,
+  WorkspaceMessageSearchResult,
   WorkspaceChannelReadState,
   WorkspaceMessageReactionCode,
   WorkspaceMessageReactionsSnapshot,
@@ -422,6 +423,22 @@ export class WorkspaceApiService {
     }
 
     return this.http.get<WorkspaceMessagePage>(`${API_BASE_URL}/api/channels/${channelId}/messages`, {
+      headers: this.buildAuthHeaders(token),
+      params
+    });
+  }
+
+  searchChannelMessages(
+    token: string,
+    channelId: string,
+    query: string,
+    limit = 20,
+  ): Observable<WorkspaceMessageSearchResult[]> {
+    const params = new HttpParams()
+      .set('query', query)
+      .set('limit', limit);
+
+    return this.http.get<WorkspaceMessageSearchResult[]>(`${API_BASE_URL}/api/channels/${channelId}/messages/search`, {
       headers: this.buildAuthHeaders(token),
       params
     });

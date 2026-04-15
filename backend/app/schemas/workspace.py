@@ -190,6 +190,16 @@ class ChannelMessageSummary(BaseModel):
     mentioned_user_ids: list[UUID] = Field(default_factory=list)
 
 
+class ChannelMessageSearchSummary(BaseModel):
+    id: UUID
+    channel_id: UUID
+    content: str
+    created_at: datetime
+    author: MessageAuthorSummary
+    attachments_count: int = 0
+    mentioned_user_ids: list[UUID] = Field(default_factory=list)
+
+
 class MessageReactionsSnapshot(BaseModel):
     message_id: UUID
     channel_id: UUID

@@ -70,6 +70,7 @@ import {
   WorkspaceMessageReactionCode,
   WorkspaceMessageReactionsSnapshot,
   WorkspaceMessageReply,
+  WorkspaceMessageSearchResult,
   WorkspaceMember,
   WorkspaceServer,
   WorkspaceChannelSearchResult,
@@ -90,7 +91,7 @@ type VoiceAccessRole = 'owner' | 'resident' | 'guest' | 'stranger';
 type VoiceWorkspaceTab = 'chat' | 'channel';
 type ConversationCreateTab = 'direct' | 'group';
 type PushFeedbackTone = 'success' | 'warning' | 'error';
-type MessageFocusKind = 'unread' | 'mention';
+type MessageFocusKind = 'unread' | 'mention' | 'search';
 type ChatMediaTab = 'gallery' | 'files';
 type AttachmentActionSurface = 'message' | 'chat';
 type MessageUploadOutcome = 'idle' | 'uploading' | 'cancelled' | 'failed';
@@ -168,6 +169,11 @@ interface ComposerMentionQueryState {
 interface MessageContentSegment {
   text: string;
   mentionUserId: string | null;
+}
+
+interface TextHighlightChunk {
+  text: string;
+  highlighted: boolean;
 }
 
 interface ProfileUpdateTrigger {
@@ -608,6 +614,7 @@ export class AppComponent {
   private readonly messageReactionTrigger$ = new Subject<MessageReactionTrigger>();
   private readonly profileUpdateTrigger$ = new Subject<ProfileUpdateTrigger>();
   private readonly globalSearchQuery$ = new Subject<string>();
+  private readonly messageSearchQuery$ = new Subject<{ channelId: string | null; query: string }>();
   private readonly pendingMessageReactionKeys = new Set<string>();
   private readonly lastMarkedReadMessageIdByChannel = new Map<string, string | null>();
   private messageUploadCancelRequested = false;
@@ -627,6 +634,9 @@ export class AppComponent {
 
   @ViewChild('messageTextarea')
   private messageTextareaRef?: ElementRef<HTMLTextAreaElement>;
+
+  @ViewChild('messageSearchInput')
+  private messageSearchInputRef?: ElementRef<HTMLInputElement>;
 
   @ViewChild('profileAvatarInput')
   private profileAvatarInputRef?: ElementRef<HTMLInputElement>;
@@ -794,6 +804,12 @@ export class AppComponent {
   readonly globalSearchLoading = signal(false);
   readonly globalSearchError = signal<string | null>(null);
   readonly globalSearchChannelResults = signal<WorkspaceChannelSearchResult[]>([]);
+  readonly messageSearchPanelOpen = signal(false);
+  readonly messageSearchQuery = signal('');
+  readonly messageSearchLoading = signal(false);
+  readonly messageSearchError = signal<string | null>(null);
+  readonly messageSearchResults = signal<WorkspaceMessageSearchResult[]>([]);
+  readonly messageSearchFocusedMessageId = signal<string | null>(null);
   readonly conversationCreateTab = signal<ConversationCreateTab>('direct');
   readonly createConversationGroupMemberIds = signal<string[]>([]);
   readonly conversationMentionTotalCount = computed(() =>
@@ -1144,6 +1160,8 @@ export class AppComponent {
     + this.globalSearchChannelResults().length
   );
   readonly globalSearchHasResults = computed(() => this.globalSearchTotalCount() > 0);
+  readonly hasMessageSearchQuery = computed(() => this.messageSearchQuery().trim().length > 0);
+  readonly messageSearchHasResults = computed(() => this.messageSearchResults().length > 0);
   readonly activeDirectPeer = computed(() => {
     const conversation = this.activeDirectConversation();
     if (!conversation) {
@@ -1900,6 +1918,7 @@ export class AppComponent {
   private bindActionPipelines(): void {
     this.bindAuthPipelines();
     this.bindGlobalSearchPipeline();
+    this.bindMessageSearchPipeline();
     this.bindProfilePipeline();
     this.bindVoiceAdminPipelines();
     this.bindFriendRequestPipelines();
@@ -1978,6 +1997,39 @@ export class AppComponent {
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe((results) => this.globalSearchChannelResults.set(results));
+  }
+
+  private bindMessageSearchPipeline(): void {
+    this.messageSearchQuery$
+      .pipe(
+        debounceTime(180),
+        distinctUntilChanged(
+          (left, right) => left.channelId === right.channelId && left.query === right.query,
+        ),
+        switchMap(({ channelId, query: rawQuery }) => {
+          const token = this.session()?.access_token;
+          const query = rawQuery.trim();
+          if (!token || !channelId || !query) {
+            this.messageSearchLoading.set(false);
+            this.messageSearchError.set(null);
+            return of([] as WorkspaceMessageSearchResult[]);
+          }
+
+          this.messageSearchLoading.set(true);
+          this.messageSearchError.set(null);
+          return this.workspaceApi.searchChannelMessages(token, channelId, query).pipe(
+            catchError((error) => {
+              this.messageSearchError.set(this.extractErrorMessage(error, 'Не удалось выполнить поиск по сообщениям'));
+              return of([] as WorkspaceMessageSearchResult[]);
+            }),
+            finalize(() => {
+              this.messageSearchLoading.set(false);
+            }),
+          );
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((results) => this.messageSearchResults.set(results));
   }
 
   private bindFriendRequestPipelines(): void {
@@ -3616,6 +3668,60 @@ export class AppComponent {
     this.globalSearchError.set(null);
     this.globalSearchChannelResults.set([]);
     this.globalSearchQuery$.next('');
+  }
+
+  toggleMessageSearchPanel(): void {
+    if (!this.canUseActiveChannelChat()) {
+      return;
+    }
+
+    if (this.messageSearchPanelOpen()) {
+      this.closeMessageSearchPanel();
+      return;
+    }
+
+    this.messageSearchPanelOpen.set(true);
+    this.messageSearchError.set(null);
+    this.focusMessageSearchInput();
+  }
+
+  closeMessageSearchPanel(): void {
+    this.resetMessageSearchState();
+  }
+
+  updateMessageSearchQuery(value: string): void {
+    const activeChannelId = this.activeMessagingChannel()?.id ?? null;
+    const nextValue = value.slice(0, 120);
+    this.messageSearchQuery.set(nextValue);
+    this.messageSearchError.set(null);
+    this.messageSearchFocusedMessageId.set(null);
+    if (!nextValue.trim()) {
+      this.messageSearchResults.set([]);
+      this.messageSearchLoading.set(false);
+    }
+    this.messageSearchQuery$.next({ channelId: activeChannelId, query: nextValue });
+  }
+
+  focusMessageSearchResult(result: WorkspaceMessageSearchResult): void {
+    const token = this.session()?.access_token;
+    const activeChannel = this.activeMessagingChannel();
+    if (!token || !activeChannel || activeChannel.id !== result.channel_id) {
+      return;
+    }
+
+    this.messageSearchFocusedMessageId.set(result.id);
+    if (this.messages().some((message) => message.id === result.id)) {
+      this.openedUnreadAnchorMessageId.set(result.id);
+      this.openedMessageFocusKind.set('search');
+      this.scrollMessageIntoView(result.id);
+      return;
+    }
+
+    this.loadMessagesForChannel(token, result.channel_id, undefined, {
+      focusMessageId: result.id,
+      focusKind: 'search',
+      limit: MESSAGES_PAGE_SIZE,
+    });
   }
 
   openGlobalSearchConversation(mode: WorkspaceMode, serverId: string): void {
@@ -5267,6 +5373,9 @@ export class AppComponent {
     this.schedulePresenceHeartbeat();
     this.closeMobilePanel();
     this.closeChatFilesModal();
+    if (selectedChannelChanged) {
+      this.resetMessageSearchState();
+    }
     this.selectedChannelId.set(channel.id);
     this.workspaceError.set(null);
     this.messageError.set(null);
@@ -7206,6 +7315,7 @@ export class AppComponent {
       this.messageError.set(null);
       this.openedUnreadAnchorMessageId.set(options.focusMessageId ?? null);
       this.openedMessageFocusKind.set(options.focusKind ?? null);
+      this.messageSearchFocusedMessageId.set(options.focusKind === 'search' ? options.focusMessageId ?? null : null);
     }
 
     this.workspaceApi
@@ -7648,6 +7758,7 @@ export class AppComponent {
     if (selectedChannelId) {
       this.lastMarkedReadMessageIdByChannel.delete(selectedChannelId);
     }
+    this.resetMessageSearchState();
     this.openedUnreadAnchorMessageId.set(null);
     this.openedMessageFocusKind.set(null);
     this.messages.set([]);
@@ -7671,6 +7782,16 @@ export class AppComponent {
     this.chatAttachments.set([]);
     this.deletingChatAttachmentId.set(null);
     this.scheduleMessageTextareaResize();
+  }
+
+  private resetMessageSearchState(): void {
+    this.messageSearchPanelOpen.set(false);
+    this.messageSearchQuery.set('');
+    this.messageSearchLoading.set(false);
+    this.messageSearchError.set(null);
+    this.messageSearchResults.set([]);
+    this.messageSearchFocusedMessageId.set(null);
+    this.messageSearchQuery$.next({ channelId: null, query: '' });
   }
 
   private applyAttachmentDeletedLocally(attachmentId: string): void {
@@ -8765,6 +8886,43 @@ export class AppComponent {
     return !!segment.mentionUserId && segment.mentionUserId === this.currentUser()?.id;
   }
 
+  messageTextHighlightChunks(text: string): TextHighlightChunk[] {
+    return this.buildTextHighlightChunks(text, this.messageSearchQuery());
+  }
+
+  messageSearchPreviewChunks(result: WorkspaceMessageSearchResult): TextHighlightChunk[] {
+    return this.buildTextHighlightChunks(this.messageSearchPreviewText(result), this.messageSearchQuery());
+  }
+
+  messageSearchPreviewText(result: WorkspaceMessageSearchResult): string {
+    const content = (result.content ?? '').trim();
+    if (!content) {
+      return 'Сообщение без текста';
+    }
+
+    const terms = this.buildSearchTerms(this.messageSearchQuery());
+    if (!terms.length) {
+      return content.length > 180 ? `${content.slice(0, 177).trimEnd()}...` : content;
+    }
+
+    const foldedContent = content.toLocaleLowerCase('ru-RU');
+    const matchIndex = terms
+      .map((term) => foldedContent.indexOf(term))
+      .filter((index) => index >= 0)
+      .sort((left, right) => left - right)[0] ?? 0;
+
+    const previewRadius = 72;
+    const start = Math.max(0, matchIndex - previewRadius);
+    const end = Math.min(content.length, matchIndex + previewRadius + 48);
+    const prefix = start > 0 ? '... ' : '';
+    const suffix = end < content.length ? ' ...' : '';
+    return `${prefix}${content.slice(start, end).trim()}${suffix}`;
+  }
+
+  isSearchFocusedMessage(message: WorkspaceMessage): boolean {
+    return this.openedMessageFocusKind() === 'search' && this.messageSearchFocusedMessageId() === message.id;
+  }
+
   openMentionSegmentUser(segment: MessageContentSegment): void {
     if (!segment.mentionUserId) {
       return;
@@ -8783,7 +8941,15 @@ export class AppComponent {
   }
 
   unreadDividerLabel(): string {
-    return this.openedMessageFocusKind() === 'mention' ? 'Упоминания' : 'Непрочитанные';
+    if (this.openedMessageFocusKind() === 'mention') {
+      return 'Упоминания';
+    }
+
+    if (this.openedMessageFocusKind() === 'search') {
+      return 'Результат поиска';
+    }
+
+    return 'Непрочитанные';
   }
 
   activeConversationPushIcon(): string {
@@ -8943,6 +9109,54 @@ export class AppComponent {
       .filter((part) => part.length > 0);
   }
 
+  private buildTextHighlightChunks(text: string, query: string): TextHighlightChunk[] {
+    if (!text) {
+      return [{ text: '', highlighted: false }];
+    }
+
+    const escapedTerms = [...new Set(this.buildSearchTerms(query))]
+      .sort((left, right) => right.length - left.length)
+      .map((term) => this.escapeRegExp(term));
+
+    if (!escapedTerms.length) {
+      return [{ text, highlighted: false }];
+    }
+
+    const chunks: TextHighlightChunk[] = [];
+    const matcher = new RegExp(`(${escapedTerms.join('|')})`, 'giu');
+    let lastIndex = 0;
+
+    for (const match of text.matchAll(matcher)) {
+      const matchIndex = match.index ?? 0;
+      const matchedText = match[0] ?? '';
+      if (!matchedText) {
+        continue;
+      }
+
+      if (matchIndex > lastIndex) {
+        chunks.push({
+          text: text.slice(lastIndex, matchIndex),
+          highlighted: false,
+        });
+      }
+
+      chunks.push({
+        text: matchedText,
+        highlighted: true,
+      });
+      lastIndex = matchIndex + matchedText.length;
+    }
+
+    if (lastIndex < text.length) {
+      chunks.push({
+        text: text.slice(lastIndex),
+        highlighted: false,
+      });
+    }
+
+    return chunks.length ? chunks : [{ text, highlighted: false }];
+  }
+
   private matchesSearchTerms(terms: string[], values: Array<string | null | undefined>): boolean {
     if (!terms.length) {
       return false;
@@ -8966,6 +9180,14 @@ export class AppComponent {
 
   private isMentionBoundaryChar(character: string): boolean {
     return !/[\p{L}\p{N}_]/u.test(character);
+  }
+
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private focusMessageSearchInput(): void {
+    queueMicrotask(() => this.messageSearchInputRef?.nativeElement.focus());
   }
 
   directConversationById(conversationId: string): ConversationSummary | null {

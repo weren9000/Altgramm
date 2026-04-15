@@ -618,6 +618,17 @@
                 </button>
               }
               @if (canUseActiveChannelChat()) {
+                <button
+                  class="secondary-button conversation-head__action conversation-head__action--icon"
+                  type="button"
+                  aria-label="Поиск по сообщениям"
+                  title="Поиск по сообщениям"
+                  (click)="toggleMessageSearchPanel()"
+                >
+                  <span class="conversation-head__action-symbol" aria-hidden="true">⌕</span>
+                </button>
+              }
+              @if (canUseActiveChannelChat()) {
                 <button class="secondary-button conversation-head__action conversation-head__action--icon" type="button" aria-label="Медиа чата" title="Медиа чата" (click)="openChatFilesModal()">
                   <img src="/assets/Uploaded_sheet_files.svg" alt="" />
                 </button>
@@ -957,6 +968,76 @@
               }
 
               <section class="conversation-stream">
+            @if (canUseActiveChannelChat() && messageSearchPanelOpen()) {
+              <div class="message-search">
+                <div class="message-search__bar">
+                  <input
+                    #messageSearchInput
+                    class="message-search__input"
+                    type="text"
+                    placeholder="Поиск по сообщениям"
+                    [ngModel]="messageSearchQuery()"
+                    (ngModelChange)="updateMessageSearchQuery($event)"
+                  />
+                  @if (hasMessageSearchQuery()) {
+                    <button
+                      class="message-search__clear"
+                      type="button"
+                      aria-label="Очистить поиск"
+                      title="Очистить поиск"
+                      (click)="updateMessageSearchQuery('')"
+                    >
+                      ×
+                    </button>
+                  }
+                  <button
+                    class="message-search__close"
+                    type="button"
+                    aria-label="Закрыть поиск"
+                    title="Закрыть поиск"
+                    (click)="closeMessageSearchPanel()"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                @if (messageSearchLoading()) {
+                  <div class="message-search__state">Ищем сообщения...</div>
+                } @else if (messageSearchError()) {
+                  <div class="message-search__state message-search__state--error">{{ messageSearchError() }}</div>
+                } @else if (hasMessageSearchQuery() && messageSearchHasResults()) {
+                  <div class="message-search__results">
+                    @for (result of messageSearchResults(); track result.id) {
+                      <button
+                        class="message-search__result"
+                        type="button"
+                        [class.message-search__result--active]="messageSearchFocusedMessageId() === result.id"
+                        (click)="focusMessageSearchResult(result)"
+                      >
+                        <div class="message-search__result-head">
+                          <strong>{{ displayNick(result.author.nick) }}</strong>
+                          <time>{{ formatMessageTime(result.created_at) }}</time>
+                        </div>
+                        <p class="message-search__result-text">
+                          @for (chunk of messageSearchPreviewChunks(result); track $index) {
+                            @if (chunk.highlighted) {
+                              <mark class="message-card__highlight">{{ chunk.text }}</mark>
+                            } @else {
+                              <span>{{ chunk.text }}</span>
+                            }
+                          }
+                        </p>
+                        @if (result.attachments_count > 0) {
+                          <small class="message-search__result-meta">Вложений: {{ result.attachments_count }}</small>
+                        }
+                      </button>
+                    }
+                  </div>
+                } @else if (hasMessageSearchQuery()) {
+                  <div class="message-search__state">Ничего не найдено</div>
+                }
+              </div>
+            }
             <div class="message-list" #messageList (scroll)="onMessageListScroll()">
               @if (canUseActiveChannelChat()) {
                 @if (!messagesLoading()) {
@@ -983,6 +1064,7 @@
                         class="message-card"
                         [attr.data-message-id]="message.id"
                         [class.message-card--self]="message.author.id === currentUser()?.id"
+                        [class.message-card--search-focused]="isSearchFocusedMessage(message)"
                         [style.box-shadow]="messageMentionsCurrentUser(message) ? 'inset 2px 0 0 rgba(255,114,149,0.4)' : null"
                       >
                         <div
@@ -1024,10 +1106,22 @@
                                     [class.message-card__mention--current]="isMentionSegmentCurrentUser(segment)"
                                     (click)="openMentionSegmentUser(segment)"
                                   >
-                                    {{ segment.text }}
+                                    @for (chunk of messageTextHighlightChunks(segment.text); track $index) {
+                                      @if (chunk.highlighted) {
+                                        <mark class="message-card__highlight">{{ chunk.text }}</mark>
+                                      } @else {
+                                        <span>{{ chunk.text }}</span>
+                                      }
+                                    }
                                   </button>
                                 } @else {
-                                  <span>{{ segment.text }}</span>
+                                  @for (chunk of messageTextHighlightChunks(segment.text); track $index) {
+                                    @if (chunk.highlighted) {
+                                      <mark class="message-card__highlight">{{ chunk.text }}</mark>
+                                    } @else {
+                                      <span>{{ chunk.text }}</span>
+                                    }
+                                  }
                                 }
                               }
                             </p>
