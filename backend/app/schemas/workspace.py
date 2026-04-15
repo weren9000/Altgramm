@@ -66,6 +66,20 @@ class ChannelSummary(BaseModel):
     first_mention_unread_message_id: UUID | None = None
 
 
+class WorkspaceChannelSearchSummary(BaseModel):
+    channel_id: UUID
+    server_id: UUID
+    server_name: str
+    server_icon_asset: str | None = None
+    server_icon_updated_at: datetime | None = None
+    name: str
+    topic: str | None
+    type: Literal["text", "voice", "announcement"]
+    position: int
+    unread_count: int = 0
+    mention_unread_count: int = 0
+
+
 class ServerMemberSummary(BaseModel):
     id: UUID
     user_id: UUID

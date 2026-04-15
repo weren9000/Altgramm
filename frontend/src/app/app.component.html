@@ -267,8 +267,195 @@
           </button>
         </div>
 
-        <div class="conversation-sidebar__list">
-          @if (isChatsMode()) {
+        <div class="conversation-sidebar__search">
+          <label class="conversation-sidebar__search-field">
+            <span class="conversation-sidebar__search-icon">⌕</span>
+            <input
+              type="text"
+              [ngModel]="globalSearchQuery()"
+              placeholder="Поиск по друзьям, группам, площадкам и каналам"
+              aria-label="Глобальный поиск"
+              (ngModelChange)="updateGlobalSearchQuery($event)"
+              (keydown.escape)="clearGlobalSearch()"
+            />
+            @if (hasGlobalSearchQuery()) {
+              <button
+                class="conversation-sidebar__search-clear"
+                type="button"
+                aria-label="Очистить поиск"
+                title="Очистить поиск"
+                (click)="clearGlobalSearch()"
+              >
+                ×
+              </button>
+            }
+          </label>
+        </div>
+
+        <div class="conversation-sidebar__list" [class.conversation-sidebar__list--search]="hasGlobalSearchQuery()">
+          @if (hasGlobalSearchQuery()) {
+            @if (globalSearchDirectResults().length) {
+              <section class="sidebar-search-section">
+                <div class="sidebar-search-section__head">
+                  <strong>Друзья</strong>
+                  <small>{{ globalSearchDirectResults().length }}</small>
+                </div>
+                @for (conversation of globalSearchDirectResults(); track conversation.id) {
+                  <button
+                    class="sidebar-entry sidebar-entry--search"
+                    type="button"
+                    (click)="openGlobalSearchConversation('chats', conversation.id)"
+                  >
+                    <div class="sidebar-entry__avatar">
+                      @if (conversationIconUrl(conversation); as iconUrl) {
+                        <img [src]="iconUrl" [alt]="conversation.title" loading="lazy" />
+                      } @else {
+                        <span>{{ displayNickInitials(conversation.title) }}</span>
+                      }
+                    </div>
+                    <div class="sidebar-entry__copy">
+                      <div class="sidebar-entry__headline">
+                        <strong>{{ conversation.title }}</strong>
+                        <span class="sidebar-entry__tag">Друг</span>
+                        @if (conversationMentionUnreadCount(conversation) > 0) {
+                          <span class="sidebar-entry__unread-badge sidebar-entry__unread-badge--mention">&#64;{{ conversationMentionUnreadBadgeLabel(conversation) }}</span>
+                        }
+                        @if (conversationUnreadCount(conversation) > 0) {
+                          <span class="sidebar-entry__unread-badge">{{ conversationUnreadBadgeLabel(conversation) }}</span>
+                        }
+                      </div>
+                      <small>{{ conversationMetaLabel(conversation) }}</small>
+                    </div>
+                  </button>
+                }
+              </section>
+            }
+
+            @if (globalSearchGroupResults().length) {
+              <section class="sidebar-search-section">
+                <div class="sidebar-search-section__head">
+                  <strong>Группы</strong>
+                  <small>{{ globalSearchGroupResults().length }}</small>
+                </div>
+                @for (conversation of globalSearchGroupResults(); track conversation.id) {
+                  <button
+                    class="sidebar-entry sidebar-entry--search"
+                    type="button"
+                    (click)="openGlobalSearchConversation('groups', conversation.id)"
+                  >
+                    <div class="sidebar-entry__avatar sidebar-entry__avatar--group">
+                      @if (conversationIconUrl(conversation); as iconUrl) {
+                        <img [src]="iconUrl" [alt]="conversation.title" loading="lazy" />
+                      } @else {
+                        <span>{{ displayNickInitials(conversation.title) }}</span>
+                      }
+                    </div>
+                    <div class="sidebar-entry__copy">
+                      <div class="sidebar-entry__headline">
+                        <strong>{{ conversation.title }}</strong>
+                        <span class="sidebar-entry__tag">Группа</span>
+                        @if (conversationMentionUnreadCount(conversation) > 0) {
+                          <span class="sidebar-entry__unread-badge sidebar-entry__unread-badge--mention">&#64;{{ conversationMentionUnreadBadgeLabel(conversation) }}</span>
+                        }
+                        @if (conversationUnreadCount(conversation) > 0) {
+                          <span class="sidebar-entry__unread-badge">{{ conversationUnreadBadgeLabel(conversation) }}</span>
+                        }
+                      </div>
+                      <small>{{ conversationMetaLabel(conversation) }}</small>
+                    </div>
+                  </button>
+                }
+              </section>
+            }
+
+            @if (globalSearchPlatformResults().length) {
+              <section class="sidebar-search-section">
+                <div class="sidebar-search-section__head">
+                  <strong>Площадки</strong>
+                  <small>{{ globalSearchPlatformResults().length }}</small>
+                </div>
+                @for (space of globalSearchPlatformResults(); track space.id) {
+                  <button
+                    class="sidebar-entry sidebar-entry--search"
+                    type="button"
+                    (click)="openGlobalSearchConversation('platforms', space.id)"
+                  >
+                    <div class="sidebar-entry__avatar sidebar-entry__avatar--group">
+                      @if (resolveSpaceIconUrl(space.id, space.icon_asset, space.icon_updated_at); as iconUrl) {
+                        <img [src]="iconUrl" [alt]="space.name" loading="lazy" />
+                      } @else {
+                        <span>{{ displayNickInitials(space.name) }}</span>
+                      }
+                    </div>
+                    <div class="sidebar-entry__copy">
+                      <div class="sidebar-entry__headline">
+                        <strong>{{ space.name }}</strong>
+                        <span class="sidebar-entry__tag">Площадка</span>
+                        @if (platformMentionUnreadCount(space) > 0) {
+                          <span class="sidebar-entry__unread-badge sidebar-entry__unread-badge--mention">&#64;{{ platformMentionUnreadBadgeLabel(space) }}</span>
+                        }
+                        @if (platformUnreadCount(space) > 0) {
+                          <span class="sidebar-entry__unread-badge">{{ platformUnreadBadgeLabel(space) }}</span>
+                        }
+                      </div>
+                      <small>{{ platformMetaLabel(space) }}</small>
+                    </div>
+                  </button>
+                }
+              </section>
+            }
+
+            @if (globalSearchChannelResults().length) {
+              <section class="sidebar-search-section">
+                <div class="sidebar-search-section__head">
+                  <strong>Каналы</strong>
+                  <small>{{ globalSearchChannelResults().length }}</small>
+                </div>
+                @for (channel of globalSearchChannelResults(); track channel.channel_id) {
+                  <button
+                    class="sidebar-entry sidebar-entry--search"
+                    type="button"
+                    (click)="openGlobalSearchChannel(channel)"
+                  >
+                    <div class="sidebar-entry__avatar sidebar-entry__avatar--group">
+                      @if (resolveSpaceIconUrl(channel.server_id, channel.server_icon_asset, channel.server_icon_updated_at); as iconUrl) {
+                        <img [src]="iconUrl" [alt]="channel.server_name" loading="lazy" />
+                      } @else {
+                        <span>{{ displayNickInitials(channel.server_name) }}</span>
+                      }
+                    </div>
+                    <div class="sidebar-entry__copy">
+                      <div class="sidebar-entry__headline">
+                        <strong>{{ globalSearchChannelLabel(channel) }}</strong>
+                        <span class="sidebar-entry__tag" [class.sidebar-entry__tag--voice]="channel.type === 'voice'">
+                          {{ globalSearchChannelTypeLabel(channel) }}
+                        </span>
+                        @if (channel.mention_unread_count > 0) {
+                          <span class="sidebar-entry__unread-badge sidebar-entry__unread-badge--mention">&#64;{{ searchBadgeLabel(channel.mention_unread_count) }}</span>
+                        }
+                        @if (channel.unread_count > 0) {
+                          <span class="sidebar-entry__unread-badge">{{ searchBadgeLabel(channel.unread_count) }}</span>
+                        }
+                      </div>
+                      <small>{{ globalSearchChannelMetaLabel(channel) }}</small>
+                    </div>
+                  </button>
+                }
+              </section>
+            }
+
+            @if (globalSearchLoading()) {
+              <div class="sidebar-search-state">Ищем каналы...</div>
+            }
+
+            @if (globalSearchError()) {
+              <div class="sidebar-search-state sidebar-search-state--error">{{ globalSearchError() }}</div>
+            }
+
+            @if (!globalSearchLoading() && !globalSearchHasResults() && !globalSearchError()) {
+              <div class="sidebar-empty">Ничего не найдено</div>
+            }
+          } @else if (isChatsMode()) {
             @if (personalChatEntries().length) {
               @for (space of personalChatEntries(); track space.id) {
                 @if (activeConversation()?.id === space.id ? activeConversation() : directConversationById(space.id); as conversation) {

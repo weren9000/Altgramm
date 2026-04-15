@@ -31,6 +31,7 @@ import {
   VoiceJoinRequestCreateResponse,
   VoiceJoinRequestSummary,
   WorkspaceChannel,
+  WorkspaceChannelSearchResult,
   WorkspaceAttachmentDownloadLink,
   WorkspaceChatAttachmentSummary,
   WorkspaceMessage,
@@ -151,6 +152,14 @@ export class WorkspaceApiService {
   getChannels(token: string, serverId: string): Observable<WorkspaceChannel[]> {
     return this.http.get<WorkspaceChannel[]>(`${API_BASE_URL}/api/servers/${serverId}/channels`, {
       headers: this.buildAuthHeaders(token)
+    });
+  }
+
+  searchWorkspaceChannels(token: string, query: string): Observable<WorkspaceChannelSearchResult[]> {
+    const params = new HttpParams().set('query', query);
+    return this.http.get<WorkspaceChannelSearchResult[]>(`${API_BASE_URL}/api/search/channels`, {
+      headers: this.buildAuthHeaders(token),
+      params
     });
   }
 

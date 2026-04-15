@@ -3,7 +3,21 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { EMPTY, Subject, catchError, exhaustMap, finalize, forkJoin, mergeMap, switchMap, takeUntil, tap } from 'rxjs';
+import {
+  EMPTY,
+  Subject,
+  catchError,
+  debounceTime,
+  distinctUntilChanged,
+  exhaustMap,
+  finalize,
+  forkJoin,
+  mergeMap,
+  of,
+  switchMap,
+  takeUntil,
+  tap
+} from 'rxjs';
 
 import { AuthApiService } from './core/api/auth-api.service';
 import { API_BASE_URL } from './core/api/api-base';
@@ -58,6 +72,7 @@ import {
   WorkspaceMessageReply,
   WorkspaceMember,
   WorkspaceServer,
+  WorkspaceChannelSearchResult,
   WorkspaceVoicePresenceChannel
 } from './core/models/workspace.models';
 import { AppEventsService } from './core/services/app-events.service';
@@ -274,6 +289,11 @@ interface PendingMessageNavigationState {
   channelId: string;
   focusMessageId: string | null;
   focusKind: MessageFocusKind;
+}
+
+interface PendingSearchNavigationState {
+  serverId: string;
+  channelId: string;
 }
 
 interface RemoveServerMemberTrigger {
@@ -587,6 +607,7 @@ export class AppComponent {
   private readonly uploadServerIconTrigger$ = new Subject<UploadServerIconTrigger>();
   private readonly messageReactionTrigger$ = new Subject<MessageReactionTrigger>();
   private readonly profileUpdateTrigger$ = new Subject<ProfileUpdateTrigger>();
+  private readonly globalSearchQuery$ = new Subject<string>();
   private readonly pendingMessageReactionKeys = new Set<string>();
   private readonly lastMarkedReadMessageIdByChannel = new Map<string, string | null>();
   private messageUploadCancelRequested = false;
@@ -596,6 +617,7 @@ export class AppComponent {
   private readonly openedUnreadAnchorMessageId = signal<string | null>(null);
   private readonly openedMessageFocusKind = signal<MessageFocusKind | null>(null);
   private readonly pendingMessageNavigation = signal<PendingMessageNavigationState | null>(null);
+  private readonly pendingSearchNavigation = signal<PendingSearchNavigationState | null>(null);
 
   @ViewChild('messageList')
   private messageListRef?: ElementRef<HTMLElement>;
@@ -768,6 +790,10 @@ export class AppComponent {
   readonly voiceAdminSelectedChannelId = signal<string | null>(null);
   readonly voiceAccessEntriesByChannelId = signal<Record<string, VoiceChannelAccessEntry[]>>({});
   readonly pendingServerSwitch = signal<PendingServerSwitchState | null>(null);
+  readonly globalSearchQuery = signal('');
+  readonly globalSearchLoading = signal(false);
+  readonly globalSearchError = signal<string | null>(null);
+  readonly globalSearchChannelResults = signal<WorkspaceChannelSearchResult[]>([]);
   readonly conversationCreateTab = signal<ConversationCreateTab>('direct');
   readonly createConversationGroupMemberIds = signal<string[]>([]);
   readonly conversationMentionTotalCount = computed(() =>
@@ -1066,6 +1092,58 @@ export class AppComponent {
   readonly personalChatEntries = computed(() => this.directConversationSpaces());
   readonly groupChatEntries = computed(() => this.groupConversationSpaces());
   readonly platformEntries = computed(() => this.platformSpaces());
+  readonly hasGlobalSearchQuery = computed(() => this.buildSearchTerms(this.globalSearchQuery()).length > 0);
+  readonly globalSearchDirectResults = computed(() => {
+    const terms = this.buildSearchTerms(this.globalSearchQuery());
+    if (!terms.length) {
+      return [];
+    }
+
+    const currentUserId = this.currentUser()?.id ?? null;
+    return this.directConversations().filter((conversation) => {
+      const peer = conversation.members.find((member) => member.user_id !== currentUserId) ?? conversation.members[0] ?? null;
+      return this.matchesSearchTerms(terms, [
+        conversation.title,
+        conversation.subtitle,
+        peer?.login,
+        peer ? this.formatPublicUserId(peer.public_id) : null,
+      ]);
+    });
+  });
+  readonly globalSearchGroupResults = computed(() => {
+    const terms = this.buildSearchTerms(this.globalSearchQuery());
+    if (!terms.length) {
+      return [];
+    }
+
+    return this.groupConversations().filter((conversation) =>
+      this.matchesSearchTerms(terms, [
+        conversation.title,
+        conversation.subtitle,
+      ])
+    );
+  });
+  readonly globalSearchPlatformResults = computed(() => {
+    const terms = this.buildSearchTerms(this.globalSearchQuery());
+    if (!terms.length) {
+      return [];
+    }
+
+    return this.platformSpaces().filter((server) =>
+      this.matchesSearchTerms(terms, [
+        server.name,
+        server.description,
+        server.slug,
+      ])
+    );
+  });
+  readonly globalSearchTotalCount = computed(() =>
+    this.globalSearchDirectResults().length
+    + this.globalSearchGroupResults().length
+    + this.globalSearchPlatformResults().length
+    + this.globalSearchChannelResults().length
+  );
+  readonly globalSearchHasResults = computed(() => this.globalSearchTotalCount() > 0);
   readonly activeDirectPeer = computed(() => {
     const conversation = this.activeDirectConversation();
     if (!conversation) {
@@ -1821,6 +1899,7 @@ export class AppComponent {
 
   private bindActionPipelines(): void {
     this.bindAuthPipelines();
+    this.bindGlobalSearchPipeline();
     this.bindProfilePipeline();
     this.bindVoiceAdminPipelines();
     this.bindFriendRequestPipelines();
@@ -1868,6 +1947,37 @@ export class AppComponent {
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe();
+  }
+
+  private bindGlobalSearchPipeline(): void {
+    this.globalSearchQuery$
+      .pipe(
+        debounceTime(180),
+        distinctUntilChanged(),
+        switchMap((rawQuery) => {
+          const token = this.session()?.access_token;
+          const query = rawQuery.trim();
+          if (!token || !query) {
+            this.globalSearchLoading.set(false);
+            this.globalSearchError.set(null);
+            return of([] as WorkspaceChannelSearchResult[]);
+          }
+
+          this.globalSearchLoading.set(true);
+          this.globalSearchError.set(null);
+          return this.workspaceApi.searchWorkspaceChannels(token, query).pipe(
+            catchError((error) => {
+              this.globalSearchError.set(this.extractErrorMessage(error, 'Не удалось выполнить поиск по каналам'));
+              return of([] as WorkspaceChannelSearchResult[]);
+            }),
+            finalize(() => {
+              this.globalSearchLoading.set(false);
+            })
+          );
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((results) => this.globalSearchChannelResults.set(results));
   }
 
   private bindFriendRequestPipelines(): void {
@@ -3489,15 +3599,65 @@ export class AppComponent {
     this.addServerMemberTrigger$.next({ token, serverId, payload });
   }
 
+  updateGlobalSearchQuery(value: string): void {
+    const nextValue = value.slice(0, 120);
+    this.globalSearchQuery.set(nextValue);
+    this.globalSearchError.set(null);
+    if (!nextValue.trim()) {
+      this.globalSearchChannelResults.set([]);
+      this.globalSearchLoading.set(false);
+    }
+    this.globalSearchQuery$.next(nextValue);
+  }
+
+  clearGlobalSearch(): void {
+    this.globalSearchQuery.set('');
+    this.globalSearchLoading.set(false);
+    this.globalSearchError.set(null);
+    this.globalSearchChannelResults.set([]);
+    this.globalSearchQuery$.next('');
+  }
+
+  openGlobalSearchConversation(mode: WorkspaceMode, serverId: string): void {
+    this.pendingSearchNavigation.set(null);
+    this.clearGlobalSearch();
+    this.applyWorkspaceMode(mode);
+    this.selectServer(serverId);
+  }
+
+  openGlobalSearchChannel(result: WorkspaceChannelSearchResult): void {
+    const token = this.session()?.access_token;
+    if (!token) {
+      return;
+    }
+
+    this.pendingSearchNavigation.set({
+      serverId: result.server_id,
+      channelId: result.channel_id,
+    });
+    this.clearGlobalSearch();
+    this.applyWorkspaceMode('platforms');
+
+    if (this.selectedServerId() === result.server_id) {
+      const channel = this.channels().find((entry) => entry.id === result.channel_id) ?? null;
+      if (channel) {
+        void this.selectChannel(channel, { connectVoice: false });
+        this.pendingSearchNavigation.set(null);
+      } else {
+        this.loadServerWorkspace(token, result.server_id);
+      }
+      return;
+    }
+
+    this.selectServer(result.server_id);
+  }
+
   selectWorkspaceMode(mode: WorkspaceMode): void {
     if (this.workspaceMode() === mode) {
       return;
     }
 
-    this.closeQuickCreateMenu();
-    this.closeConversationActionMenu();
-    this.closeGroupOwnershipModal();
-    this.workspaceMode.set(mode);
+    this.applyWorkspaceMode(mode);
     const spaces = mode === 'groups'
       ? this.groupConversationSpaces()
       : mode === 'platforms'
@@ -3518,6 +3678,13 @@ export class AppComponent {
         this.resetTextChannelState();
       }
     }
+  }
+
+  private applyWorkspaceMode(mode: WorkspaceMode): void {
+    this.closeQuickCreateMenu();
+    this.closeConversationActionMenu();
+    this.closeGroupOwnershipModal();
+    this.workspaceMode.set(mode);
   }
 
   openMobileWorkspaceMode(mode: WorkspaceMode): void {
@@ -4960,7 +5127,9 @@ export class AppComponent {
     this.pendingFriendRequestCount.set(0);
     this.pendingPushConversationId = null;
     this.pendingMessageNavigation.set(null);
+    this.pendingSearchNavigation.set(null);
     this.pushFeedback.set(null);
+    this.clearGlobalSearch();
     this.channels.set([]);
     this.members.set([]);
     this.voicePresence.set([]);
@@ -6227,6 +6396,14 @@ export class AppComponent {
     this.selectedChannelId.set(nextSelectedChannelId);
     this.filterVoicePresenceToVisibleChannels(channels);
 
+    const pendingSearchNavigation = this.pendingSearchNavigation();
+    if (
+      pendingSearchNavigation
+      && pendingSearchNavigation.serverId === this.selectedServerId()
+    ) {
+      this.pendingSearchNavigation.set(null);
+    }
+
     if (
       this.selectedVoiceMemberChannelId()
       && !channels.some((channel) => channel.id === this.selectedVoiceMemberChannelId())
@@ -6855,9 +7032,12 @@ export class AppComponent {
 
   private loadServerWorkspace(token: string, serverId: string): void {
     const pendingNavigation = this.pendingMessageNavigation();
+    const pendingSearchNavigation = this.pendingSearchNavigation();
     const previousSelectedChannelId =
       pendingNavigation?.serverId === serverId
         ? pendingNavigation.channelId
+        : pendingSearchNavigation?.serverId === serverId
+          ? pendingSearchNavigation.channelId
         : this.selectedChannelId();
 
     this.stopMemberPolling(false);
@@ -8671,6 +8851,23 @@ export class AppComponent {
     return `${this.activeGroupMemberCount()} участников`;
   }
 
+  globalSearchChannelLabel(channel: WorkspaceChannelSearchResult): string {
+    return channel.type === 'text' ? `# ${channel.name}` : channel.name;
+  }
+
+  globalSearchChannelMetaLabel(channel: WorkspaceChannelSearchResult): string {
+    const typeLabel = channel.type === 'voice' ? 'Голосовой канал' : 'Текстовый канал';
+    return channel.topic?.trim() ? `${channel.server_name} · ${channel.topic}` : `${channel.server_name} · ${typeLabel}`;
+  }
+
+  globalSearchChannelTypeLabel(channel: WorkspaceChannelSearchResult): string {
+    return channel.type === 'voice' ? 'Голос' : 'Текст';
+  }
+
+  searchBadgeLabel(count: number): string {
+    return count > 99 ? '99+' : String(Math.max(0, count));
+  }
+
   private buildConversationListPreview(message: WorkspaceMessage): string {
     const normalizedContent = message.content.trim().replace(/\s+/gu, ' ');
     if (normalizedContent) {
@@ -8736,6 +8933,27 @@ export class AppComponent {
     }
 
     return this.isMentionBoundaryChar(content[index - 1] ?? '');
+  }
+
+  private buildSearchTerms(value: string): string[] {
+    return value
+      .trim()
+      .toLocaleLowerCase('ru-RU')
+      .split(/\s+/)
+      .filter((part) => part.length > 0);
+  }
+
+  private matchesSearchTerms(terms: string[], values: Array<string | null | undefined>): boolean {
+    if (!terms.length) {
+      return false;
+    }
+
+    const haystack = values
+      .filter((value): value is string => Boolean(value))
+      .join(' ')
+      .toLocaleLowerCase('ru-RU');
+
+    return terms.every((term) => haystack.includes(term));
   }
 
   private hasMentionBoundaryAfter(content: string, index: number): boolean {

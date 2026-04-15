@@ -35,6 +35,20 @@ export interface WorkspaceChannel {
   first_mention_unread_message_id: string | null;
 }
 
+export interface WorkspaceChannelSearchResult {
+  channel_id: string;
+  server_id: string;
+  server_name: string;
+  server_icon_asset: string | null;
+  server_icon_updated_at: string | null;
+  name: string;
+  topic: string | null;
+  type: 'text' | 'voice' | 'announcement';
+  position: number;
+  unread_count: number;
+  mention_unread_count: number;
+}
+
 export interface WorkspaceMember {
   id: string;
   user_id: string;
