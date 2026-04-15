@@ -351,10 +351,24 @@ def _get_accessible_attachment(db: Session, attachment_id: UUID, current_user: U
 
     _get_accessible_message_channel(db, message.channel_id, current_user)
     return attachment
+    if attachment.storage_path:
+        file_path = resolve_attachment_path(attachment.storage_path)
+        if not file_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Р¤Р°Р№Р» РЅРµРґРѕСЃС‚СѓРїРµРЅ")
+    elif attachment.content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Р¤Р°Р№Р» РЅРµРґРѕСЃС‚СѓРїРµРЅ")
+
+    return attachment
 
 
 def _get_downloadable_attachment(db: Session, attachment_id: UUID, current_user: User) -> Attachment:
     attachment = _get_accessible_attachment(db, attachment_id, current_user)
+    if attachment.storage_path:
+        file_path = resolve_attachment_path(attachment.storage_path)
+        if not file_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Р¤Р°Р№Р» РЅРµРґРѕСЃС‚СѓРїРµРЅ")
+    elif attachment.content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Р¤Р°Р№Р» РЅРµРґРѕСЃС‚СѓРїРµРЅ")
     if attachment.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Файл удален")
     return attachment

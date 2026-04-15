@@ -76,6 +76,9 @@ type VoiceWorkspaceTab = 'chat' | 'channel';
 type ConversationCreateTab = 'direct' | 'group';
 type PushFeedbackTone = 'success' | 'warning' | 'error';
 type MessageFocusKind = 'unread' | 'mention';
+type ChatMediaTab = 'gallery' | 'files';
+type AttachmentActionSurface = 'message' | 'chat';
+type MessageUploadOutcome = 'idle' | 'uploading' | 'cancelled' | 'failed';
 
 interface LoginFormModel {
   email: string;
@@ -319,6 +322,7 @@ interface MarkChannelReadTrigger {
 interface DownloadAttachmentTrigger {
   token: string;
   attachment: WorkspaceMessageAttachment;
+  surface: AttachmentActionSurface;
 }
 
 interface LoadAttachmentPreviewTrigger {
@@ -326,6 +330,7 @@ interface LoadAttachmentPreviewTrigger {
   attachment: WorkspaceMessageAttachment;
   openImageAfterLoad?: boolean;
   reportErrors?: boolean;
+  surface?: AttachmentActionSurface;
 }
 
 interface LoadChatAttachmentsTrigger {
@@ -335,7 +340,8 @@ interface LoadChatAttachmentsTrigger {
 
 interface DeleteChatAttachmentTrigger {
   token: string;
-  attachment: WorkspaceChatAttachmentSummary;
+  attachmentId: string;
+  surface: AttachmentActionSurface;
 }
 
 interface VoiceMemberRoleTrigger {
@@ -583,6 +589,7 @@ export class AppComponent {
   private readonly profileUpdateTrigger$ = new Subject<ProfileUpdateTrigger>();
   private readonly pendingMessageReactionKeys = new Set<string>();
   private readonly lastMarkedReadMessageIdByChannel = new Map<string, string | null>();
+  private messageUploadCancelRequested = false;
   private pendingPushConversationId: string | null = null;
   private profileAvatarSelectionMode: 'instant' | 'editor' = 'instant';
   private profileAvatarPreviewObjectUrl: string | null = null;
@@ -648,14 +655,17 @@ export class AppComponent {
   readonly messagesLoadingMore = signal(false);
   readonly messageSubmitting = signal(false);
   readonly messageUploadProgress = signal<MessageUploadProgressState | null>(null);
+  readonly messageUploadOutcome = signal<MessageUploadOutcome>('idle');
   readonly composerMentionQueryState = signal<ComposerMentionQueryState | null>(null);
   readonly composerMentionActiveIndex = signal(0);
   readonly downloadingAttachmentIds = signal<string[]>([]);
   readonly chatFilesModalOpen = signal(false);
   readonly chatFilesLoading = signal(false);
   readonly chatFilesError = signal<string | null>(null);
+  readonly chatMediaTab = signal<ChatMediaTab>('gallery');
   readonly chatAttachments = signal<WorkspaceChatAttachmentSummary[]>([]);
   readonly deletingChatAttachmentId = signal<string | null>(null);
+  readonly attachmentAvailabilityLabels = signal<Record<string, string>>({});
   readonly friendRequestsModalOpen = signal(false);
   readonly friendRequestsLoading = signal(false);
   readonly friendRequestsError = signal<string | null>(null);
@@ -1690,6 +1700,11 @@ export class AppComponent {
       }
     }
 
+    const chatAttachment = this.chatAttachments().find((item) => item.id === attachmentId);
+    if (chatAttachment) {
+      return this.toAttachmentRecord(chatAttachment);
+    }
+
     return null;
   });
 
@@ -1697,6 +1712,12 @@ export class AppComponent {
     const attachment = this.openedImageAttachment();
     return attachment ? this.attachmentPreviewUrl(attachment) : null;
   });
+  readonly chatGalleryAttachments = computed(() =>
+    this.chatAttachments().filter((attachment) => this.isInlineImageAttachment(this.toAttachmentRecord(attachment)))
+  );
+  readonly chatFileAttachments = computed(() =>
+    this.chatAttachments().filter((attachment) => !this.isInlineImageAttachment(this.toAttachmentRecord(attachment)))
+  );
 
   readonly localizedEnvironment = computed(() => {
     const environment = this.health()?.environment;
@@ -2309,8 +2330,11 @@ export class AppComponent {
   private bindMessagePipelines(): void {
     this.sendMessageTrigger$
       .pipe(
-        exhaustMap(({ token, channelId, payload }) =>
-          this.workspaceApi.sendMessage(token, channelId, payload).pipe(
+        exhaustMap(({ token, channelId, payload }) => {
+          let completed = false;
+          let failed = false;
+
+          return this.workspaceApi.sendMessage(token, channelId, payload).pipe(
             takeUntil(this.cancelMessageUploadTrigger$),
             tap((event: WorkspaceMessageUploadEvent) => {
               if (event.kind === 'progress') {
@@ -2322,12 +2346,14 @@ export class AppComponent {
                 return;
               }
 
+              completed = true;
               const message = event.message;
               this.messageDraft.set('');
               this.pendingFiles.set([]);
               this.selectedReplyMessage.set(null);
               this.clearComposerMentionState();
               this.scheduleMessageTextareaResize();
+              this.messageUploadOutcome.set('idle');
 
               if (this.selectedChannelId() !== channelId) {
                 return;
@@ -2339,15 +2365,22 @@ export class AppComponent {
               this.markChannelAsRead(channelId, message.id);
             }),
             catchError((error) => {
+              failed = true;
+              this.messageUploadOutcome.set('failed');
               this.messageError.set(this.extractErrorMessage(error, 'Не удалось отправить сообщение'));
               return EMPTY;
             }),
             finalize(() => {
+              if (!completed && !failed && this.messageUploadCancelRequested) {
+                this.messageUploadOutcome.set('cancelled');
+              }
+
+              this.messageUploadCancelRequested = false;
               this.messageSubmitting.set(false);
               this.messageUploadProgress.set(null);
             })
           )
-        ),
+        }),
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe();
@@ -2363,9 +2396,10 @@ export class AppComponent {
 
     this.downloadAttachmentTrigger$
       .pipe(
-        exhaustMap(({ token, attachment }) =>
+        exhaustMap(({ token, attachment, surface }) =>
           this.workspaceApi.createAttachmentDownloadLink(token, attachment.id).pipe(
             tap(({ url }) => {
+              this.clearAttachmentAvailability(attachment.id);
               const anchor = document.createElement('a');
               anchor.href = this.resolveApiUrl(url);
               anchor.download = attachment.filename;
@@ -2376,7 +2410,7 @@ export class AppComponent {
               anchor.remove();
             }),
             catchError((error) => {
-              this.messageError.set(this.extractErrorMessage(error, 'Не удалось скачать файл'));
+              this.handleAttachmentActionError(error, attachment.id, surface, 'Не удалось скачать файл');
               return EMPTY;
             }),
             finalize(() => {
@@ -2398,6 +2432,10 @@ export class AppComponent {
               }
 
               this.chatAttachments.set(attachments);
+              this.preloadChatAttachmentPreviews(attachments);
+              if (this.chatMediaTab() === 'gallery' && !attachments.some((attachment) => this.isInlineImageAttachment(this.toAttachmentRecord(attachment)))) {
+                this.chatMediaTab.set('files');
+              }
               this.chatFilesError.set(null);
             }),
             catchError((error) => {
@@ -2415,15 +2453,23 @@ export class AppComponent {
 
     this.deleteChatAttachmentTrigger$
       .pipe(
-        exhaustMap(({ token, attachment }) =>
-          this.workspaceApi.deleteAttachment(token, attachment.id).pipe(
+        exhaustMap(({ token, attachmentId, surface }) =>
+          this.workspaceApi.deleteAttachment(token, attachmentId).pipe(
             tap(() => {
-              this.chatAttachments.update((items) => items.filter((item) => item.id !== attachment.id));
-              this.applyAttachmentDeletedLocally(attachment.id);
-              this.chatFilesError.set(null);
+              this.chatAttachments.update((items) => items.filter((item) => item.id !== attachmentId));
+              this.applyAttachmentDeletedLocally(attachmentId);
+              if (surface === 'chat') {
+                this.chatFilesError.set(null);
+              } else {
+                this.messageError.set(null);
+              }
             }),
             catchError((error) => {
-              this.chatFilesError.set(this.extractErrorMessage(error, 'Не удалось удалить файл'));
+              if (surface === 'chat') {
+                this.chatFilesError.set(this.extractErrorMessage(error, 'Не удалось удалить файл'));
+              } else {
+                this.messageError.set(this.extractErrorMessage(error, 'Не удалось удалить файл'));
+              }
               return EMPTY;
             }),
             finalize(() => {
@@ -2437,18 +2483,16 @@ export class AppComponent {
 
     this.loadAttachmentPreviewTrigger$
       .pipe(
-        mergeMap(({ token, attachment, openImageAfterLoad, reportErrors }) =>
+        mergeMap(({ token, attachment, openImageAfterLoad, reportErrors, surface }) =>
           this.workspaceApi.downloadAttachment(token, attachment.id).pipe(
             tap((blob) => {
               const objectUrl = URL.createObjectURL(blob);
-              const attachmentStillVisible = this.messages().some((message) =>
-                message.attachments.some((messageAttachment) => messageAttachment.id === attachment.id)
-              );
-              if (!attachmentStillVisible) {
+              if (!this.shouldKeepAttachmentPreview(attachment.id)) {
                 URL.revokeObjectURL(objectUrl);
                 return;
               }
 
+              this.clearAttachmentAvailability(attachment.id);
               const previousUrl = this.attachmentPreviewUrls()[attachment.id];
               if (previousUrl) {
                 URL.revokeObjectURL(previousUrl);
@@ -2464,7 +2508,13 @@ export class AppComponent {
               }
             }),
             catchError((error) => {
-              this.messageError.set(this.extractErrorMessage(error, 'Не удалось загрузить вложение'));
+              this.handleAttachmentActionError(
+                error,
+                attachment.id,
+                surface ?? 'message',
+                'Не удалось загрузить вложение',
+                reportErrors !== false
+              );
               return EMPTY;
             }),
             finalize(() => {
@@ -3334,6 +3384,7 @@ export class AppComponent {
     this.chatFilesModalOpen.set(true);
     this.chatFilesLoading.set(true);
     this.chatFilesError.set(null);
+    this.chatMediaTab.set('gallery');
     this.chatAttachments.set([]);
     this.loadChatAttachmentsTrigger$.next({
       token,
@@ -3349,15 +3400,12 @@ export class AppComponent {
     this.deletingChatAttachmentId.set(null);
   }
 
+  selectChatMediaTab(tab: ChatMediaTab): void {
+    this.chatMediaTab.set(tab);
+  }
+
   downloadChatAttachment(attachment: WorkspaceChatAttachmentSummary): void {
-    this.downloadAttachment({
-      id: attachment.id,
-      filename: attachment.filename,
-      mime_type: attachment.mime_type,
-      size_bytes: attachment.size_bytes,
-      created_at: attachment.created_at,
-      deleted_at: null,
-    });
+    this.downloadAttachment(this.toAttachmentRecord(attachment), 'chat');
   }
 
   canDeleteChatAttachment(attachment: WorkspaceChatAttachmentSummary): boolean {
@@ -3376,7 +3424,53 @@ export class AppComponent {
 
     this.deletingChatAttachmentId.set(attachment.id);
     this.chatFilesError.set(null);
-    this.deleteChatAttachmentTrigger$.next({ token, attachment });
+    this.deleteChatAttachmentTrigger$.next({
+      token,
+      attachmentId: attachment.id,
+      surface: 'chat',
+    });
+  }
+
+  isChatGalleryAttachmentLoading(attachment: WorkspaceChatAttachmentSummary): boolean {
+    return this.isAttachmentPreviewLoading(this.toAttachmentRecord(attachment));
+  }
+
+  chatAttachmentPreviewUrl(attachment: WorkspaceChatAttachmentSummary): string | null {
+    return this.attachmentPreviewUrl(this.toAttachmentRecord(attachment));
+  }
+
+  openChatGalleryAttachment(attachment: WorkspaceChatAttachmentSummary): void {
+    this.openImageAttachment(this.toAttachmentRecord(attachment), 'chat');
+  }
+
+  canDeleteMessageAttachment(message: WorkspaceMessage, attachment: WorkspaceMessageAttachment): boolean {
+    return message.author.id === this.currentUser()?.id && !attachment.deleted_at;
+  }
+
+  isDeletingMessageAttachment(attachmentId: string): boolean {
+    return this.isDeletingChatAttachment(attachmentId);
+  }
+
+  deleteMessageAttachment(
+    attachment: WorkspaceMessageAttachment,
+    surface: AttachmentActionSurface = 'message'
+  ): void {
+    const token = this.session()?.access_token;
+    if (!token || attachment.deleted_at || !this.canDeleteAttachmentById(attachment.id) || this.isDeletingMessageAttachment(attachment.id)) {
+      return;
+    }
+
+    this.deletingChatAttachmentId.set(attachment.id);
+    if (surface === 'chat') {
+      this.chatFilesError.set(null);
+    } else {
+      this.messageError.set(null);
+    }
+    this.deleteChatAttachmentTrigger$.next({
+      token,
+      attachmentId: attachment.id,
+      surface,
+    });
   }
 
   submitAddGroupMember(): void {
@@ -4414,6 +4508,7 @@ export class AppComponent {
 
   removePendingFile(index: number): void {
     this.pendingFiles.update((files) => files.filter((_, currentIndex) => currentIndex !== index));
+    this.messageUploadOutcome.set('idle');
   }
 
   onMessageListScroll(): void {
@@ -4478,7 +4573,9 @@ export class AppComponent {
     };
     const channelId = activeChannel.id;
 
+    this.messageUploadCancelRequested = false;
     this.messageSubmitting.set(true);
+    this.messageUploadOutcome.set(payload.files.length ? 'uploading' : 'idle');
     this.messageUploadProgress.set(payload.files.length ? { loaded: 0, total: null, percent: null } : null);
     this.messageError.set(null);
     this.schedulePresenceHeartbeat(true);
@@ -4521,6 +4618,7 @@ export class AppComponent {
       return;
     }
 
+    this.messageUploadCancelRequested = true;
     this.cancelMessageUploadTrigger$.next();
   }
 
@@ -4614,19 +4712,23 @@ export class AppComponent {
     requestAnimationFrame(() => this.messageTextareaRef?.nativeElement.focus());
   }
 
-  downloadAttachment(attachment: WorkspaceMessageAttachment): void {
+  downloadAttachment(attachment: WorkspaceMessageAttachment, surface: AttachmentActionSurface = 'message'): void {
     const token = this.session()?.access_token;
     if (!token || this.isAttachmentDownloading(attachment)) {
       return;
     }
 
     if (attachment.deleted_at) {
-      this.messageError.set('Файл удален');
+      if (surface === 'chat') {
+        this.chatFilesError.set('Файл удален');
+      } else {
+        this.messageError.set('Файл удален');
+      }
       return;
     }
 
     this.downloadingAttachmentIds.update((ids) => (ids.includes(attachment.id) ? ids : [...ids, attachment.id]));
-    this.downloadAttachmentTrigger$.next({ token, attachment });
+    this.downloadAttachmentTrigger$.next({ token, attachment, surface });
   }
 
   isAttachmentDownloading(attachment: WorkspaceMessageAttachment): boolean {
@@ -5175,6 +5277,63 @@ export class AppComponent {
     return this.voiceMuted() ? 'Включить микрофон' : 'Выключить микрофон';
   }
 
+  messageUploadOutcomeLabel(): string {
+    if (this.messageUploadOutcome() === 'uploading') {
+      return 'Загружается';
+    }
+
+    if (this.messageUploadOutcome() === 'cancelled') {
+      return 'Отменено';
+    }
+
+    if (this.messageUploadOutcome() === 'failed') {
+      return 'Ошибка';
+    }
+
+    return 'Готов к отправке';
+  }
+
+  attachmentMetaLabel(attachment: WorkspaceMessageAttachment): string {
+    return `${this.attachmentKindLabel(attachment)} · ${this.formatFileSize(attachment.size_bytes)}`;
+  }
+
+  attachmentStateLabel(attachment: WorkspaceMessageAttachment): string {
+    if (attachment.deleted_at) {
+      return 'Удален';
+    }
+
+    const availabilityLabel = this.attachmentAvailabilityLabel(attachment.id);
+    if (availabilityLabel) {
+      return availabilityLabel;
+    }
+
+    if (this.isAttachmentDownloading(attachment)) {
+      return 'Подготовка скачивания';
+    }
+
+    if (this.isAttachmentPreviewLoading(attachment) && (this.isInlineImageAttachment(attachment) || this.isInlineAudioAttachment(attachment))) {
+      return 'Загружается';
+    }
+
+    return 'Доступен';
+  }
+
+  isAttachmentUnavailable(attachment: WorkspaceMessageAttachment): boolean {
+    return this.attachmentAvailabilityLabel(attachment.id) !== null;
+  }
+
+  chatAttachmentMetaLabel(attachment: WorkspaceChatAttachmentSummary): string {
+    return this.attachmentMetaLabel(this.toAttachmentRecord(attachment));
+  }
+
+  chatAttachmentStateLabel(attachment: WorkspaceChatAttachmentSummary): string {
+    return this.attachmentStateLabel(this.toAttachmentRecord(attachment));
+  }
+
+  isChatAttachmentUnavailable(attachment: WorkspaceChatAttachmentSummary): boolean {
+    return this.isAttachmentUnavailable(this.toAttachmentRecord(attachment));
+  }
+
   attachmentPreviewUrl(attachment: WorkspaceMessageAttachment): string | null {
     return this.attachmentPreviewUrls()[attachment.id] ?? null;
   }
@@ -5229,9 +5388,37 @@ export class AppComponent {
     return this.attachmentPreviewUrl(attachment);
   }
 
-  openImageAttachment(attachment: WorkspaceMessageAttachment): void {
+  openedImageAttachmentMetaLabel(): string {
+    const attachment = this.openedImageAttachment();
+    return attachment ? this.attachmentMetaLabel(attachment) : '';
+  }
+
+  openedImageAttachmentStateLabel(): string {
+    const attachment = this.openedImageAttachment();
+    return attachment ? this.attachmentStateLabel(attachment) : '';
+  }
+
+  canDeleteOpenedImageAttachment(): boolean {
+    const attachment = this.openedImageAttachment();
+    return attachment ? this.canDeleteAttachmentById(attachment.id) && !attachment.deleted_at : false;
+  }
+
+  deleteOpenedImageAttachment(): void {
+    const attachment = this.openedImageAttachment();
+    if (!attachment) {
+      return;
+    }
+
+    this.deleteMessageAttachment(attachment, this.chatFilesModalOpen() ? 'chat' : 'message');
+  }
+
+  openImageAttachment(attachment: WorkspaceMessageAttachment, surface: AttachmentActionSurface = 'message'): void {
     if (attachment.deleted_at) {
-      this.messageError.set('Файл удален');
+      if (surface === 'chat') {
+        this.chatFilesError.set('Файл удален');
+      } else {
+        this.messageError.set('Файл удален');
+      }
       return;
     }
 
@@ -5243,7 +5430,11 @@ export class AppComponent {
       return;
     }
 
-    this.requestAttachmentPreview(attachment, { openImageAfterLoad: true });
+    this.requestAttachmentPreview(attachment, {
+      openImageAfterLoad: true,
+      reportErrors: true,
+      surface,
+    });
   }
 
   loadAudioAttachment(attachment: WorkspaceMessageAttachment): void {
@@ -5252,7 +5443,10 @@ export class AppComponent {
       return;
     }
 
-    this.requestAttachmentPreview(attachment);
+    this.requestAttachmentPreview(attachment, {
+      reportErrors: true,
+      surface: 'message',
+    });
   }
 
   closeImageAttachment(): void {
@@ -6976,7 +7170,11 @@ export class AppComponent {
 
   private requestAttachmentPreview(
     attachment: WorkspaceMessageAttachment,
-    options?: { openImageAfterLoad?: boolean }
+    options?: {
+      openImageAfterLoad?: boolean;
+      reportErrors?: boolean;
+      surface?: AttachmentActionSurface;
+    }
   ): void {
     const token = this.session()?.access_token;
     if (!token) {
@@ -7000,12 +7198,18 @@ export class AppComponent {
       return;
     }
 
-    this.messageError.set(null);
+    if (options?.surface === 'chat') {
+      this.chatFilesError.set(null);
+    } else {
+      this.messageError.set(null);
+    }
     this.loadingAttachmentPreviewIds.add(attachment.id);
     this.loadAttachmentPreviewTrigger$.next({
       token,
       attachment,
-      openImageAfterLoad: options?.openImageAfterLoad === true
+      openImageAfterLoad: options?.openImageAfterLoad === true,
+      reportErrors: options?.reportErrors,
+      surface: options?.surface,
     });
   }
 
@@ -7016,9 +7220,149 @@ export class AppComponent {
           continue;
         }
 
-        this.requestAttachmentPreview(attachment);
+        this.requestAttachmentPreview(attachment, {
+          reportErrors: false,
+          surface: 'message',
+        });
       }
     }
+  }
+
+  private preloadChatAttachmentPreviews(attachments: WorkspaceChatAttachmentSummary[]): void {
+    for (const attachment of attachments) {
+      const normalizedAttachment = this.toAttachmentRecord(attachment);
+      if (!this.isInlineImageAttachment(normalizedAttachment)) {
+        continue;
+      }
+
+      this.requestAttachmentPreview(normalizedAttachment, {
+        reportErrors: false,
+        surface: 'chat',
+      });
+    }
+  }
+
+  private shouldKeepAttachmentPreview(attachmentId: string): boolean {
+    if (this.messages().some((message) => message.attachments.some((attachment) => attachment.id === attachmentId))) {
+      return true;
+    }
+
+    return this.chatAttachments().some((attachment) => attachment.id === attachmentId);
+  }
+
+  private handleAttachmentActionError(
+    error: unknown,
+    attachmentId: string,
+    surface: AttachmentActionSurface,
+    fallback: string,
+    reportErrors = true,
+  ): void {
+    let message = this.extractErrorMessage(error, fallback);
+
+    if (error instanceof HttpErrorResponse) {
+      if (error.status === 410) {
+        this.clearAttachmentAvailability(attachmentId);
+        this.applyAttachmentDeletedLocally(attachmentId);
+        message = 'Файл удален';
+      } else if (error.status === 404) {
+        this.attachmentAvailabilityLabels.update((labels) => ({
+          ...labels,
+          [attachmentId]: 'Недоступен',
+        }));
+        message = 'Файл недоступен';
+      } else if (error.status === 403) {
+        this.attachmentAvailabilityLabels.update((labels) => ({
+          ...labels,
+          [attachmentId]: 'Нет доступа',
+        }));
+        message = 'Нет доступа к файлу';
+      }
+    }
+
+    if (!reportErrors) {
+      return;
+    }
+
+    if (surface === 'chat') {
+      this.chatFilesError.set(message);
+    } else {
+      this.messageError.set(message);
+    }
+  }
+
+  private attachmentAvailabilityLabel(attachmentId: string): string | null {
+    return this.attachmentAvailabilityLabels()[attachmentId] ?? null;
+  }
+
+  private clearAttachmentAvailability(attachmentId: string): void {
+    if (!this.attachmentAvailabilityLabels()[attachmentId]) {
+      return;
+    }
+
+    this.attachmentAvailabilityLabels.update((labels) => {
+      const nextLabels = { ...labels };
+      delete nextLabels[attachmentId];
+      return nextLabels;
+    });
+  }
+
+  private attachmentKindLabel(attachment: WorkspaceMessageAttachment): string {
+    const mimeType = attachment.mime_type.toLowerCase();
+    if (mimeType.startsWith('image/')) {
+      return 'Изображение';
+    }
+
+    if (mimeType.startsWith('audio/')) {
+      return 'Аудио';
+    }
+
+    if (mimeType === 'application/pdf') {
+      return 'PDF';
+    }
+
+    const extensionMatch = attachment.filename.match(/\.([a-z0-9]+)$/i);
+    if (extensionMatch) {
+      return extensionMatch[1].toUpperCase();
+    }
+
+    return 'Файл';
+  }
+
+  private toAttachmentRecord(
+    attachment: WorkspaceMessageAttachment | WorkspaceChatAttachmentSummary
+  ): WorkspaceMessageAttachment {
+    if ('deleted_at' in attachment) {
+      return attachment;
+    }
+
+    return {
+      id: attachment.id,
+      filename: attachment.filename,
+      mime_type: attachment.mime_type,
+      size_bytes: attachment.size_bytes,
+      created_at: attachment.created_at,
+      deleted_at: null,
+    };
+  }
+
+  private canDeleteAttachmentById(attachmentId: string): boolean {
+    const currentUserId = this.currentUser()?.id;
+    if (!currentUserId) {
+      return false;
+    }
+
+    for (const message of this.messages()) {
+      if (message.author.id !== currentUserId) {
+        continue;
+      }
+
+      if (message.attachments.some((attachment) => attachment.id === attachmentId)) {
+        return true;
+      }
+    }
+
+    const chatAttachment = this.chatAttachments().find((attachment) => attachment.id === attachmentId);
+    return chatAttachment?.author.id === currentUserId;
   }
 
   private applyMessageReactionSnapshot(
@@ -7135,6 +7479,7 @@ export class AppComponent {
     this.messagesLoading.set(false);
     this.messagesLoadingMore.set(false);
     this.messageSubmitting.set(false);
+    this.messageUploadOutcome.set('idle');
     this.messageDraft.set('');
     this.clearComposerMentionState();
     this.pendingFiles.set([]);
@@ -7142,6 +7487,7 @@ export class AppComponent {
     this.chatFilesModalOpen.set(false);
     this.chatFilesLoading.set(false);
     this.chatFilesError.set(null);
+    this.chatMediaTab.set('gallery');
     this.chatAttachments.set([]);
     this.deletingChatAttachmentId.set(null);
     this.scheduleMessageTextareaResize();
@@ -7150,6 +7496,7 @@ export class AppComponent {
   private applyAttachmentDeletedLocally(attachmentId: string): void {
     this.downloadingAttachmentIds.update((ids) => ids.filter((id) => id !== attachmentId));
     this.loadingAttachmentPreviewIds.delete(attachmentId);
+    this.clearAttachmentAvailability(attachmentId);
 
     const currentPreviewUrl = this.attachmentPreviewUrls()[attachmentId];
     if (currentPreviewUrl) {
@@ -7357,6 +7704,7 @@ export class AppComponent {
 
     this.loadingAttachmentPreviewIds.clear();
     this.attachmentPreviewUrls.set({});
+    this.attachmentAvailabilityLabels.set({});
     this.openedImageAttachmentId.set(null);
   }
 
@@ -7699,6 +8047,7 @@ export class AppComponent {
 
     if (validFiles.length) {
       this.pendingFiles.set([...this.pendingFiles(), ...validFiles]);
+      this.messageUploadOutcome.set('idle');
       this.messageError.set(null);
       this.schedulePresenceHeartbeat();
     }
