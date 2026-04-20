@@ -3826,12 +3826,60 @@ export class AppComponent {
     const sameMode = this.workspaceMode() === mode;
     const serversPanelOpen = this.mobilePanel() === 'servers';
     if (sameMode && serversPanelOpen) {
-      this.mobilePanel.set(null);
+      this.closeMobilePanel();
       return;
     }
 
+    this.closeSideMenu();
+    this.closeFriendRequestsModal();
     this.selectWorkspaceMode(mode);
     this.mobilePanel.set('servers');
+  }
+
+  toggleMobileFooterMenu(): void {
+    if (!this.isCompactVoiceWorkspaceViewport()) {
+      this.toggleSideMenu();
+      return;
+    }
+
+    const shouldOpen = !this.sideMenuOpen();
+    this.closeMobilePanel();
+    this.closeFriendRequestsModal();
+    this.closeQuickCreateMenu();
+    this.sideMenuOpen.set(shouldOpen);
+  }
+
+  toggleMobileFooterNotifications(): void {
+    if (!this.isCompactVoiceWorkspaceViewport()) {
+      if (this.friendRequestsModalOpen()) {
+        this.closeFriendRequestsModal();
+      } else {
+        this.openFriendRequestsModal();
+      }
+      return;
+    }
+
+    const shouldOpen = !this.friendRequestsModalOpen();
+    this.closeMobilePanel();
+    this.closeSideMenu();
+    if (!shouldOpen) {
+      this.closeFriendRequestsModal();
+      return;
+    }
+
+    this.openFriendRequestsModal();
+  }
+
+  isMobileFooterWorkspaceModeActive(mode: WorkspaceMode): boolean {
+    return this.workspaceMode() === mode && this.mobilePanel() === 'servers';
+  }
+
+  isMobileFooterMenuActive(): boolean {
+    return this.sideMenuOpen();
+  }
+
+  isMobileFooterNotificationsActive(): boolean {
+    return this.friendRequestsModalOpen();
   }
 
   openCreateGroupModal(): void {

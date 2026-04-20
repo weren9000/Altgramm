@@ -6841,6 +6841,17 @@ select {
     border-radius: 12px;
   }
 
+  .mobile-mode-footer__action--active {
+    background: rgba(157, 253, 56, 0.12);
+    border-color: rgba(157, 253, 56, 0.42);
+    color: #f6ffd9;
+  }
+
+  .mobile-mode-footer__action--active img {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+
   .mobile-mode-footer__action--menu {
     border: 0;
     background: transparent;
@@ -6850,6 +6861,10 @@ select {
   .mobile-mode-footer__action--menu:hover:not(:disabled) {
     border: 0;
     background: rgba(255, 255, 255, 0.04);
+  }
+
+  .mobile-mode-footer__action--menu.mobile-mode-footer__action--active {
+    background: rgba(157, 253, 56, 0.12);
   }
 
   .mobile-mode-footer__action--notifications img {
