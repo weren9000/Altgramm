@@ -4237,19 +4237,47 @@ export class AppComponent {
       return;
     }
 
-    this.openMemberCall({
-      id: peer.user_id,
-      userId: peer.user_id,
-      publicId: peer.public_id,
-      login: peer.login,
-      nick: peer.nick,
-      avatarUpdatedAt: peer.avatar_updated_at,
-      role: peer.role,
-      roleLabel: this.formatMemberRole(peer.role),
-      isSelf: peer.user_id === this.currentUser()?.id,
-      presenceLabel: this.formatOnlineStatus(peer.is_online),
-      isOnline: peer.is_online,
-      voiceParticipant: null
+    this.directCall.clearFeedback();
+
+    if (!peer.is_online) {
+      this.setPushFeedback({
+        tone: 'warning',
+        message: `Друг ${this.displayNick(peer.nick)} сейчас офлайн`
+      });
+      return;
+    }
+
+    if (this.directCallCanCall()) {
+      this.closeMobilePanel();
+      this.selectedMemberUserId.set(null);
+      this.selectedVoiceMemberChannelId.set(null);
+      this.directCall.openCall({
+        user_id: peer.user_id,
+        nick: peer.nick,
+        avatar_updated_at: peer.avatar_updated_at,
+      });
+      return;
+    }
+
+    if (this.hasDirectCall()) {
+      const activePeer = this.directCallPeer();
+      if (activePeer?.user_id === peer.user_id) {
+        this.closeMobilePanel();
+        this.selectedMemberUserId.set(null);
+        this.selectedVoiceMemberChannelId.set(null);
+        return;
+      }
+
+      this.setPushFeedback({
+        tone: 'warning',
+        message: 'Сначала завершите текущий личный звонок'
+      });
+      return;
+    }
+
+    this.setPushFeedback({
+      tone: 'warning',
+      message: 'Личный звонок пока недоступен'
     });
   }
 

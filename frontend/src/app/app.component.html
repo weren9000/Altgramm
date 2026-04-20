@@ -1130,7 +1130,7 @@
                         [attr.data-message-id]="message.id"
                         [class.message-card--self]="message.author.id === currentUser()?.id"
                         [class.message-card--search-focused]="isSearchFocusedMessage(message)"
-                        [style.box-shadow]="messageMentionsCurrentUser(message) ? 'inset 2px 0 0 rgba(255,114,149,0.4)' : null"
+                        [style.border-left]="messageMentionsCurrentUser(message) ? '2px solid rgba(255,114,149,0.4)' : null"
                       >
                         <div
                           class="message-card__avatar"
@@ -1511,7 +1511,7 @@
 
                     @if (composerMentionMenuOpen()) {
                       <div
-                        style="position:absolute;left:-6px;right:-6px;bottom:calc(100% + 10px);display:grid;gap:4px;padding:8px;border-radius:2px;border:1px solid rgba(120,255,208,0.08);background:rgba(6,13,14,0.98);box-shadow:0 14px 32px rgba(0,0,0,0.32);backdrop-filter:blur(14px);z-index:4;"
+                        style="position:absolute;left:-6px;right:-6px;bottom:calc(100% + 10px);display:grid;gap:4px;padding:8px;border-radius:2px;border:1px solid rgba(120,255,208,0.08);background:rgba(6,13,14,0.98);backdrop-filter:blur(14px);z-index:4;"
                       >
                         @for (candidate of composerMentionCandidates(); track candidate.userId) {
                           <button
@@ -1538,7 +1538,8 @@
                             <span
                               style="width:8px;height:8px;border-radius:50%;"
                               [style.background]="candidate.isOnline ? 'rgba(81,240,168,0.9)' : 'rgba(255,255,255,0.12)'"
-                              [style.box-shadow]="candidate.isOnline ? '0 0 0 3px rgba(81,240,168,0.12)' : 'none'"
+                              [style.outline]="candidate.isOnline ? '2px solid rgba(81,240,168,0.16)' : 'none'"
+                              [style.outline-offset]="candidate.isOnline ? '1px' : '0'"
                             ></span>
                           </button>
                         }
