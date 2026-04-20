@@ -5137,16 +5137,25 @@ select {
 }
 
 .conversation-sidebar__tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 11px;
   background: rgba(255, 255, 255, 0.03);
-  color: rgba(231, 240, 246, 0.88);
-  font-size: 12px;
-  font-weight: 600;
   min-height: 34px;
-  padding: 8px 10px;
+  padding: 6px;
   cursor: pointer;
   transition: 180ms ease;
+}
+
+.conversation-sidebar__tab img {
+  width: 17px;
+  height: 17px;
+  display: block;
+  object-fit: contain;
+  opacity: 0.84;
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .conversation-sidebar__tab:hover,
@@ -5154,6 +5163,12 @@ select {
   border-color: rgba(157, 253, 56, 0.42);
   background: rgba(157, 253, 56, 0.12);
   color: #f6ffd9;
+}
+
+.conversation-sidebar__tab:hover img,
+.conversation-sidebar__tab--active img {
+  opacity: 1;
+  transform: scale(1.03);
 }
 
 .conversation-sidebar__list {

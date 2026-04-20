@@ -235,25 +235,31 @@
               class="conversation-sidebar__tab"
               [class.conversation-sidebar__tab--active]="isChatsMode()"
               type="button"
+              aria-label="Друзья"
+              title="Друзья"
               (click)="selectWorkspaceMode('chats')"
             >
-              Друзья
+              <img src="/assets/User_Profile.svg" alt="" />
             </button>
             <button
               class="conversation-sidebar__tab"
               [class.conversation-sidebar__tab--active]="isGroupsMode()"
               type="button"
+              aria-label="Группы"
+              title="Группы"
               (click)="selectWorkspaceMode('groups')"
             >
-              Группы
+              <img src="/assets/Group_fill.svg" alt="" />
             </button>
             <button
               class="conversation-sidebar__tab"
               [class.conversation-sidebar__tab--active]="isPlatformsMode()"
               type="button"
+              aria-label="Площадка"
+              title="Площадка"
               (click)="selectWorkspaceMode('platforms')"
             >
-              Площадка
+              <img src="/assets/place.svg" alt="" />
             </button>
           </div>
 
