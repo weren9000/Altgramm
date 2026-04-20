@@ -4925,47 +4925,6 @@ select {
   overflow: hidden;
 }
 
-.conversation-sidebar__quick-add {
-  min-width: 38px;
-  width: 38px;
-  min-height: 38px;
-  padding: 0;
-  border-radius: 12px;
-  font-size: 22px;
-  line-height: 1;
-}
-
-.quick-create-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 10px;
-  z-index: 35;
-  min-width: 220px;
-  padding: 8px;
-  display: grid;
-  gap: 4px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(10, 18, 28, 0.98);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.36);
-}
-
-.quick-create-menu__item {
-  min-height: 38px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(242, 250, 247, 0.9);
-  text-align: left;
-  cursor: pointer;
-  transition: background 160ms ease, color 160ms ease;
-}
-
-.quick-create-menu__item:hover:not(:disabled) {
-  background: rgba(81, 240, 168, 0.12);
-}
-
 .conversation-head__action img,
 .conversation-head__action svg,
 .group-voice-card__action img,
@@ -6832,13 +6791,13 @@ select {
   }
 
   .conversation-sidebar__tabs {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: stretch;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
     gap: 8px;
   }
 
   .conversation-sidebar__tabs-actions {
-    justify-content: flex-start;
+    justify-content: center;
   }
 
   .conversation-sidebar__mode-tabs {

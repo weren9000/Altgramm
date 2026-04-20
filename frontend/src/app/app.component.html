@@ -211,23 +211,6 @@
             >
               <img class="conversation-sidebar__menu-art" src="/assets/burger_menu.png" alt="" />
             </button>
-            <button class="secondary-button conversation-sidebar__quick-add" type="button" aria-label="Создать или добавить" title="Создать или добавить" (click)="toggleQuickCreateMenu()">
-              +
-            </button>
-            @if (quickCreateMenuOpen()) {
-              <button class="floating-menu-backdrop" type="button" aria-label="Закрыть меню создания" (click)="closeQuickCreateMenu()"></button>
-              <div class="quick-create-menu">
-                <button class="quick-create-menu__item" type="button" (click)="openAddUserShortcut()">
-                  Добавить друга по ID
-                </button>
-                <button class="quick-create-menu__item" type="button" (click)="openCreateGroupShortcut()">
-                  Создать группу
-                </button>
-                <button class="quick-create-menu__item" type="button" (click)="openCreatePlatformShortcut()">
-                  Создать площадку
-                </button>
-              </div>
-            }
           </div>
 
           <div class="conversation-sidebar__mode-tabs">
