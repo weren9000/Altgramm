@@ -6791,17 +6791,7 @@ select {
   }
 
   .conversation-sidebar__tabs {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .conversation-sidebar__tabs-actions {
-    justify-content: center;
-  }
-
-  .conversation-sidebar__mode-tabs {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: none;
   }
 
   .mobile-mode-footer {
@@ -6811,7 +6801,8 @@ select {
     bottom: 10px;
     z-index: 90;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: auto repeat(3, minmax(0, 1fr)) auto;
+    align-items: center;
     gap: 8px;
     padding: 8px;
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -6822,22 +6813,48 @@ select {
   }
 
   .mobile-mode-footer__button {
-    min-height: 38px;
-    padding: 0 12px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.03);
-    color: rgba(231, 240, 246, 0.84);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+    min-width: 0;
+  }
+
+  .mobile-mode-footer__button img {
+    width: 17px;
+    height: 17px;
+    display: block;
+    object-fit: contain;
   }
 
   .mobile-mode-footer__button--active {
     border-color: rgba(157, 253, 56, 0.42);
     background: rgba(157, 253, 56, 0.12);
-    color: #f6ffd9;
+  }
+
+  .mobile-mode-footer__button--active img {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+
+  .mobile-mode-footer__action {
+    min-width: 38px;
+    width: 38px;
+    min-height: 38px;
+    padding: 0;
+    border-radius: 12px;
+  }
+
+  .mobile-mode-footer__action--menu {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .mobile-mode-footer__action--menu:hover:not(:disabled) {
+    border: 0;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .mobile-mode-footer__action--notifications img {
+    width: 16px;
+    height: 16px;
   }
 
   .group-overview,

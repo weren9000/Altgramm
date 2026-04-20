@@ -1579,30 +1579,60 @@
       </main>
     </div>
 
-    <nav class="mobile-mode-footer" aria-label="Разделы">
+    <nav class="mobile-mode-footer" aria-label="Разделы и действия">
       <button
-        class="mobile-mode-footer__button"
+        class="icon-button mobile-mode-footer__action mobile-mode-footer__action--menu"
+        type="button"
+        aria-label="Открыть меню"
+        title="Открыть меню"
+        (click)="toggleSideMenu()"
+      >
+        <img class="conversation-sidebar__menu-art" src="/assets/burger_menu.png" alt="" />
+      </button>
+      <button
+        class="conversation-sidebar__tab mobile-mode-footer__button"
+        [class.conversation-sidebar__tab--active]="isChatsMode()"
         [class.mobile-mode-footer__button--active]="isChatsMode()"
         type="button"
+        aria-label="Друзья"
+        title="Друзья"
         (click)="openMobileWorkspaceMode('chats')"
       >
-        Друзья
+        <img src="/assets/User_Profile.svg" alt="" />
       </button>
       <button
-        class="mobile-mode-footer__button"
+        class="conversation-sidebar__tab mobile-mode-footer__button"
+        [class.conversation-sidebar__tab--active]="isGroupsMode()"
         [class.mobile-mode-footer__button--active]="isGroupsMode()"
         type="button"
+        aria-label="Группы"
+        title="Группы"
         (click)="openMobileWorkspaceMode('groups')"
       >
-        Группы
+        <img src="/assets/Group_fill.svg" alt="" />
       </button>
       <button
-        class="mobile-mode-footer__button"
+        class="conversation-sidebar__tab mobile-mode-footer__button"
+        [class.conversation-sidebar__tab--active]="isPlatformsMode()"
         [class.mobile-mode-footer__button--active]="isPlatformsMode()"
         type="button"
+        aria-label="Площадка"
+        title="Площадка"
         (click)="openMobileWorkspaceMode('platforms')"
       >
-        Площадка
+        <img src="/assets/place.svg" alt="" />
+      </button>
+      <button
+        class="secondary-button conversation-sidebar__icon-button mobile-mode-footer__action mobile-mode-footer__action--notifications"
+        type="button"
+        aria-label="Уведомления"
+        title="Уведомления"
+        (click)="openFriendRequestsModal()"
+      >
+        <img
+          [src]="friendRequestBadgeVisible() ? '/assets/Bell_pin_fill.svg' : '/assets/Bell_fill.svg'"
+          alt=""
+        />
       </button>
     </nav>
   </div>
