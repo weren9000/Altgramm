@@ -627,45 +627,55 @@
                           [disabled]="isActiveConversationPushPending()"
                           (click)="closeConversationActionMenu(); toggleActiveConversationPush()"
                         >
+                          <img class="conversation-action-menu__item-icon" [src]="activeConversationPushIcon()" alt="" />
                           {{ activeConversationPushActionLabel() }}
                         </button>
                       }
                       @if (canUseActiveChannelChat()) {
                         <button class="conversation-action-menu__item" type="button" (click)="closeConversationActionMenu(); toggleMessageSearchPanel()">
+                          <span class="conversation-action-menu__item-icon conversation-action-menu__item-icon--symbol" aria-hidden="true">⌕</span>
                           Поиск по сообщениям
                         </button>
                       }
                       @if (canUseActiveChannelChat()) {
                         <button class="conversation-action-menu__item" type="button" (click)="closeConversationActionMenu(); openChatFilesModal()">
+                          <img class="conversation-action-menu__item-icon" src="/assets/Uploaded_sheet_files.svg" alt="" />
                           Медиа чата
                         </button>
                       }
                       <button class="conversation-action-menu__item" type="button" (click)="closeConversationActionMenu(); openGroupMembersPanel()">
+                        <img class="conversation-action-menu__item-icon" src="/assets/Group_fill.svg" alt="" />
                         Пользователи
                       </button>
                       @if (canManageActiveGroup()) {
                         <button class="conversation-action-menu__item" type="button" (click)="closeConversationActionMenu(); openAddGroupMemberModal()">
+                          <img class="conversation-action-menu__item-icon" src="/assets/User_fill_add.svg" alt="" />
                           Добавить участника
                         </button>
                       }
                       @if (isPlatformsMode() && canOpenPlatformSettings()) {
                         <button class="conversation-action-menu__item" type="button" (click)="openPlatformSettingsModal()">
+                          <span class="conversation-action-menu__item-icon conversation-action-menu__item-icon--symbol" aria-hidden="true">⚙</span>
                           Настройки площадки
                         </button>
                       }
                       @if (isGroupsMode() && activeGroupConversation(); as groupConversation) {
                         <button class="conversation-action-menu__item" type="button" [disabled]="isServerMembershipActionPending(groupConversation.id)" (click)="leaveActiveGroup()">
+                          <img class="conversation-action-menu__item-icon" src="/assets/Log out.svg" alt="" />
                           Выйти из группы
                         </button>
                         <button class="conversation-action-menu__item conversation-action-menu__item--danger" type="button" [disabled]="isServerMembershipActionPending(groupConversation.id)" (click)="blockActiveGroup()">
+                          <span class="conversation-action-menu__item-icon conversation-action-menu__item-icon--symbol" aria-hidden="true">⛔</span>
                           Заблокировать группу
                         </button>
                       }
                       @if (isPlatformsMode() && activeServer(); as platform) {
                         <button class="conversation-action-menu__item" type="button" [disabled]="isServerMembershipActionPending(platform.id)" (click)="leaveActivePlatform()">
+                          <img class="conversation-action-menu__item-icon" src="/assets/Log out.svg" alt="" />
                           Выйти с площадки
                         </button>
                         <button class="conversation-action-menu__item conversation-action-menu__item--danger" type="button" [disabled]="isServerMembershipActionPending(platform.id)" (click)="blockActivePlatform()">
+                          <span class="conversation-action-menu__item-icon conversation-action-menu__item-icon--symbol" aria-hidden="true">⛔</span>
                           Заблокировать площадку
                         </button>
                       }
@@ -719,13 +729,16 @@
                   <div class="conversation-action-menu">
                     @if (isChatsMode() && activeDirectPeer(); as directPeer) {
                       <button class="conversation-action-menu__item conversation-action-menu__item--danger" type="button" [disabled]="isFriendManagementPending(directPeer.user_id)" (click)="removeActiveFriend()">
+                        <img class="conversation-action-menu__item-icon" src="/assets/Trash.svg" alt="" />
                         Убрать из друзей
                       </button>
                       <button class="conversation-action-menu__item conversation-action-menu__item--danger" type="button" [disabled]="isFriendManagementPending(directPeer.user_id)" (click)="blockActiveFriend()">
+                        <span class="conversation-action-menu__item-icon conversation-action-menu__item-icon--symbol" aria-hidden="true">⛔</span>
                         Заблокировать
                       </button>
                     }
                     <button class="conversation-action-menu__item" type="button" (click)="closeConversationActionMenu()">
+                      <span class="conversation-action-menu__item-icon conversation-action-menu__item-icon--symbol" aria-hidden="true">×</span>
                       Отмена
                     </button>
                   </div>
